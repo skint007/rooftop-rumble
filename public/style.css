@@ -67,7 +67,7 @@ body {
 .overlay.clear {
   background: none;
   place-items: end center;
-  padding-bottom: 6vh;
+  padding-bottom: max(6vh, 60px); /* room for the controller hint bar */
   pointer-events: none;
 }
 .overlay.clear .panel {

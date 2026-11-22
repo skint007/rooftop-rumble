@@ -11,6 +11,7 @@ import { gamepads } from './input.ts';
 type Dir = 'up' | 'down' | 'left' | 'right';
 
 const STICK = 0.5;
+const SWITCH_MARGIN = 0.2; // the other stick axis must win by this much to change direction
 const REPEAT_DELAY_MS = 350;
 const REPEAT_EVERY_MS = 140;
 const A = 0;
@@ -64,6 +65,7 @@ export function startPadNav(): void {
     spot ? list.find((c) => describe(c, screen) === spot!.key) : undefined;
   // Per pad and direction, so one pad holding a direction doesn't hide another's press.
   const heldSince = new Map<string, number>();
+  const stickAxis = new Map<number, 'x' | 'y' | null>(); // per pad, the axis the stick is counting
   const lastRepeat = new Map<string, number>();
 
   // Directions held right now are ignored until released (used when the screen or the
@@ -92,9 +94,18 @@ export function startPadNav(): void {
     pads.forEach((p, i) => {
       if (!p) return;
       const b = (n: number) => p.buttons[n]?.pressed ?? false;
-      // The stick only counts its stronger axis, so a diagonal tilt is one direction.
+      // The stick counts one axis at a time, so a diagonal tilt is one direction. It keeps
+      // its current axis until the other clearly wins, so wobble near 45° doesn't flip it.
       const [ax = 0, ay = 0] = p.axes;
-      const [x, y] = Math.abs(ax) >= Math.abs(ay) ? [ax, 0] : [0, ay];
+      const [mx, my] = [Math.abs(ax), Math.abs(ay)];
+      const was = stickAxis.get(i);
+      const axis =
+        mx <= STICK && my <= STICK ? null
+        : was === 'x' && mx > STICK && my < mx + SWITCH_MARGIN ? 'x'
+        : was === 'y' && my > STICK && mx < my + SWITCH_MARGIN ? 'y'
+        : mx >= my ? 'x' : 'y';
+      stickAxis.set(i, axis);
+      const [x, y] = axis === 'x' ? [ax, 0] : axis === 'y' ? [0, ay] : [0, 0];
       if (b(DPAD.up) || y < -STICK) held.set(`${i}:up`, 'up');
       if (b(DPAD.down) || y > STICK) held.set(`${i}:down`, 'down');
       if (b(DPAD.left) || x < -STICK) held.set(`${i}:left`, 'left');
