@@ -2,6 +2,11 @@
 
 Turn-based rooftop artillery for 1 to 4 players. Raccoons throw exploding soda cans across a randomly built city. Wind changes each round, and blasts knock holes in the buildings.
 
+| | |
+| --- | --- |
+| ![Title screen](docs/screenshots/title.png) | ![Aiming a throw by dragging the mouse](docs/screenshots/aiming.png) |
+| ![A 2v2 team match a few throws in](docs/screenshots/team-match.png) | ![An online lobby with two players and a CPU](docs/screenshots/online-lobby.png) |
+
 ```sh
 npm install
 npm start          # http://localhost:8080, set PORT to change it
