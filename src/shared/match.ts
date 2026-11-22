@@ -70,7 +70,6 @@ export class MatchRunner {
     if (this.canAct(id)) this.emit({ t: 'aim', id, angle, power });
   }
 
-  /** A human throws. Ignored if it isn't their turn. */
   /** A human throws. Ignored unless it's their turn and `turn` matches the current one. */
   throw(id: number, angle: number, power: number, turn: number): boolean {
     if (!this.canAct(id) || turn !== this.state.turn || this.state.players[id]!.controller !== 'human') return false;
