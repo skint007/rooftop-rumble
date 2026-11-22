@@ -37,10 +37,11 @@ function resolvePath(urlPath: string): string | null {
 }
 
 const http = createServer(async (req, res) => {
-  const path = resolvePath(new URL(req.url ?? '/', 'http://x').pathname);
-  const type = path && MIME[extname(path)];
-  if (!path || !type) return void res.writeHead(404).end('Not found');
+  // Everything is inside the try: a malformed URL or bad %-escape must not crash the server.
   try {
+    const path = resolvePath(new URL(req.url ?? '/', 'http://x').pathname);
+    const type = path && MIME[extname(path)];
+    if (!path || !type) return void res.writeHead(404).end('Not found');
     let body: string | Buffer;
     if (path.endsWith('.ts')) {
       body = stripped.get(path) ?? stripTypeScriptTypes(await readFile(path, 'utf8'));
@@ -65,12 +66,39 @@ function newCode(): string {
   }
 }
 
-const send = (ws: WebSocket, msg: ServerMsg) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg));
-let nextClient = 1;
+const MAX_BUFFERED = 1 << 20; // drop clients that stop reading instead of queueing forever
+const HEARTBEAT_MS = 15_000;
 
-new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 }).on('connection', (ws) => {
+function send(ws: WebSocket, msg: ServerMsg): void {
+  if (ws.readyState !== ws.OPEN) return;
+  if (ws.bufferedAmount > MAX_BUFFERED) return void ws.terminate();
+  ws.send(JSON.stringify(msg));
+}
+
+let nextClient = 1;
+const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 4096 });
+const alive = new WeakMap<WebSocket, boolean>();
+
+// Pings every client. One that misses a pong is cut off, so a player whose
+// connection silently died gets handed to a CPU instead of stalling the match.
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (alive.get(ws) === false) {
+      ws.terminate();
+      continue;
+    }
+    alive.set(ws, false);
+    ws.ping();
+  }
+}, HEARTBEAT_MS).unref();
+
+wss.on('connection', (ws) => {
   const clientId = `c${nextClient++}`;
   let room: Room | null = null;
+  alive.set(ws, true);
+  ws.on('pong', () => alive.set(ws, true));
+  // Oversized or invalid frames emit 'error' (then 'close'). Unhandled, it would crash the process.
+  ws.on('error', () => ws.terminate());
 
   ws.on('message', (data) => {
     const msg = parseClientMsg(String(data));

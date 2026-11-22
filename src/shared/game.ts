@@ -83,7 +83,8 @@ export interface GameState {
   buildings: Building[];
   craters: Crater[];
   wind: number;
-  turnOrder: number[]; // player ids with teams interleaved
+  turnTeams: number[]; // teams in the order they take turns
+  lastThrower: number[]; // per team, id of its last thrower this round, or -1
   current: number; // id of the player whose turn it is
   phase: Phase;
   roundWinner: number | null; // team, or -1 for a draw
@@ -147,7 +148,8 @@ export function createMatch(specs: PlayerSpec[], config: MatchConfig): GameState
     buildings: [],
     craters: [],
     wind: 0,
-    turnOrder: [],
+    turnTeams: [],
+    lastThrower: [-1, -1, -1, -1],
     current: 0,
     phase: 'aiming',
     roundWinner: null,
@@ -196,8 +198,12 @@ export function startRound(state: GameState, seed: number): void {
     p.lastAngle = p.x < WORLD_W / 2 ? 45 : 135;
     p.lastPower = 50;
   }
-  state.turnOrder = buildTurnOrder(state.players, state.round);
-  state.current = state.turnOrder[0]!;
+  // Teams take turns in rotation, and a different team leads off each round.
+  const teams = [...new Set(state.players.map((p) => p.team))].sort((a, b) => a - b);
+  const lead = (state.round - 1) % teams.length;
+  state.turnTeams = [...teams.slice(lead), ...teams.slice(0, lead)];
+  state.lastThrower = [-1, -1, -1, -1];
+  state.current = state.players.find((p) => p.team === state.turnTeams[0])!.id;
 }
 
 // Teammates stand next to each other, spread evenly across the city.
@@ -216,17 +222,6 @@ function placePlayers(state: GameState): void {
     p.x = b.x + b.w / 2;
     p.y = WORLD_H - b.h;
   });
-}
-
-// Round-robin across teams so a big team doesn't get several throws in a row.
-function buildTurnOrder(players: Player[], round: number): number[] {
-  const teams = [...new Set(players.map((p) => p.team))].sort((a, b) => a - b);
-  const groups = teams.map((t) => players.filter((p) => p.team === t).map((p) => p.id));
-  const order: number[] = [];
-  const longest = Math.max(...groups.map((g) => g.length));
-  for (let i = 0; i < longest; i++) for (const g of groups) if (i < g.length) order.push(g[i]!);
-  const s = (round - 1) % order.length;
-  return [...order.slice(s), ...order.slice(0, s)];
 }
 
 const columnCache = new WeakMap<Building[], Int16Array>();
@@ -368,16 +363,22 @@ export function applyThrow(state: GameState, res: ThrowResult): void {
   }
 }
 
-/** Passes the turn to the next living player. */
+/**
+ * Passes the turn to the next team that still has someone standing, so teams
+ * alternate even when they're uneven. Within a team, members take turns in order.
+ */
 export function advanceTurn(state: GameState): void {
-  const order = state.turnOrder;
-  const start = order.indexOf(state.current);
-  for (let k = 1; k <= order.length; k++) {
-    const id = order[(start + k) % order.length]!;
-    if (state.players[id]!.alive) {
-      state.current = id;
-      return;
-    }
+  const curTeam = state.players[state.current]!.team;
+  state.lastThrower[curTeam] = state.current;
+  const teams = state.turnTeams;
+  const start = teams.indexOf(curTeam);
+  for (let k = 1; k <= teams.length; k++) {
+    const team = teams[(start + k) % teams.length]!;
+    const members = state.players.filter((p) => p.team === team && p.alive);
+    if (members.length === 0) continue;
+    const last = state.lastThrower[team]!;
+    state.current = (members.find((p) => p.id > last) ?? members[0]!).id;
+    return;
   }
 }
 
