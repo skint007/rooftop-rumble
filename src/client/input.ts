@@ -58,6 +58,8 @@ export class AimInput {
       if (e.code === 'Escape') this.drag = null;
     };
     const keyup = (e: KeyboardEvent) => this.keys.delete(e.code);
+    // Keys released while the window is in the background never send keyup.
+    const blur = () => this.keys.clear();
     const menu = (e: Event) => e.preventDefault();
     canvas.addEventListener('pointerdown', down);
     canvas.addEventListener('pointermove', move);
@@ -66,6 +68,7 @@ export class AimInput {
     canvas.addEventListener('contextmenu', menu);
     window.addEventListener('keydown', keydown);
     window.addEventListener('keyup', keyup);
+    window.addEventListener('blur', blur);
     this.cleanup.push(() => {
       canvas.removeEventListener('pointerdown', down);
       canvas.removeEventListener('pointermove', move);
@@ -73,6 +76,7 @@ export class AimInput {
       canvas.removeEventListener('contextmenu', menu);
       window.removeEventListener('keydown', keydown);
       window.removeEventListener('keyup', keyup);
+      window.removeEventListener('blur', blur);
     });
   }
 

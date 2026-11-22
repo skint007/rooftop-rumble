@@ -381,10 +381,14 @@ function updateResultsButtons(): void {
 let pointerDown = false;
 let renderPending = false;
 document.addEventListener('pointerdown', () => (pointerDown = true), true);
-document.addEventListener('pointerup', () => {
+function pointerReleased(): void {
   pointerDown = false;
   if (renderPending) setTimeout(renderLobby); // after the click has been dispatched
-});
+}
+// A gesture can end without pointerup (drag-and-drop, touch scroll, switching windows).
+document.addEventListener('pointerup', pointerReleased);
+document.addEventListener('pointercancel', pointerReleased);
+window.addEventListener('blur', pointerReleased);
 
 function renderLobby(): void {
   if (!lobby) return;

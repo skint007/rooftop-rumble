@@ -111,7 +111,8 @@ export class Play {
     if (fresh) {
       this.flash(`ROUND ${state.round}`, state.wind === 0 ? 'Calm night' : `Wind ${state.wind > 0 ? '→' : '←'} ${Math.abs(state.wind)}`);
     }
-    if (state.phase === 'matchOver') return this.onMatchOver(state);
+    // Someone joining a finished room still sees who won.
+    if (state.phase === 'matchOver') return this.announce(state);
     if (state.phase !== 'aiming') return;
 
     const p = state.players[state.current]!;
