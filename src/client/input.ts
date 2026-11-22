@@ -181,7 +181,7 @@ export class AimInput {
 }
 
 /** Connected gamepads. Empty if the page isn't allowed gamepad access (Permissions-Policy), which makes getGamepads throw. */
-function gamepads(): (Gamepad | null)[] {
+export function gamepads(): (Gamepad | null)[] {
   try {
     return navigator.getGamepads();
   } catch {

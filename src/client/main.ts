@@ -4,6 +4,7 @@ import { MatchRunner } from '../shared/match.ts';
 import { NAME_MAX, ROOM_CODE_LENGTH, type ClientMsg, type LobbySeat, type LobbyView, type ServerMsg } from '../shared/protocol.ts';
 import { sfx, toggleMute, unlockAudio } from './audio.ts';
 import type { DragMode, PadBinding } from './input.ts';
+import { startPadNav } from './padnav.ts';
 import { Play, type Session } from './play.ts';
 
 // ---------- small DOM helpers ----------
@@ -72,6 +73,8 @@ function show(id: ScreenId | null): void {
   for (const s of screens) $(s).hidden = s !== id;
   $('menu-btn').hidden = !(play && id === null);
   if (play) play.inputBlocked = id === 'menu';
+  // Back in the match: re-sample pads so the A that pressed Resume doesn't also throw.
+  if (play && id === null) play.input.cancel();
   // A hidden button keeping focus would still catch Enter and Space.
   if (id === null && document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
@@ -582,6 +585,8 @@ $('lobby-copy').onclick = async () => {
     window.prompt('Copy this link:', location.href);
   }
 };
+
+startPadNav();
 
 // A ?room=CODE link drops you on the join screen with the code filled in.
 const roomParam = new URLSearchParams(location.search).get('room');
