@@ -163,7 +163,7 @@ export class AimInput {
   cancel(): void {
     this.drag = null;
     this.released = false;
-    this.pressed.clear();
+    this.endFrame(); // clears key presses and samples pad buttons, so a held button isn't new
   }
 
   get dragging(): boolean {
