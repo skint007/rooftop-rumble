@@ -126,7 +126,7 @@ export class Play {
     this.myAim = { angle: p.lastAngle, power: p.lastPower };
     this.scene.aim = { id: p.id, ...this.myAim };
     this.scene.hint = mine
-      ? `${p.name.toUpperCase()}: DRAG TO AIM · ARROWS/STICKS · SPACE/A THROWS`
+      ? `${p.name.toUpperCase()}: DRAG TO ADJUST · CLICK TO REPEAT · STICKS/ARROWS · A/SPACE THROWS`
       : p.controller === 'cpu'
         ? `${p.name.toUpperCase()} IS THINKING…`
         : `${p.name.toUpperCase()} IS AIMING…`;
