@@ -33,7 +33,7 @@ export type ClientMsg =
   | { t: 'start' }
   | { t: 'lobby' } // host: end the match and return everyone to the lobby
   | { t: 'aim'; id: number; angle: number; power: number }
-  | { t: 'throw'; id: number; angle: number; power: number };
+  | { t: 'throw'; id: number; angle: number; power: number; turn: number };
 
 export type ServerMsg = { t: 'error'; message: string } | { t: 'lobby'; lobby: LobbyView } | MatchEvent;
 

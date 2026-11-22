@@ -97,14 +97,14 @@ setInterval(() => {
 }, HEARTBEAT_MS).unref();
 
 wss.on('connection', (ws) => {
+  // Oversized or invalid frames emit 'error' (then 'close'). Unhandled, it would crash the process.
+  ws.on('error', () => ws.terminate());
   if (wss.clients.size > MAX_CLIENTS) return void ws.close(1013, 'Server full');
   const clientId = `c${nextClient++}`;
   let room: Room | null = null;
   let failedJoins = 0;
   alive.set(ws, true);
   ws.on('pong', () => alive.set(ws, true));
-  // Oversized or invalid frames emit 'error' (then 'close'). Unhandled, it would crash the process.
-  ws.on('error', () => ws.terminate());
 
   ws.on('message', (data) => {
     const msg = parseClientMsg(String(data));

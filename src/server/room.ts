@@ -118,7 +118,7 @@ export class Room {
 
   private playerMove(from: string, msg: Msg<'aim'> | Msg<'throw'>): void {
     if (!this.match || this.seats[this.playerSeat[msg.id] ?? -1]?.owner !== from) return;
-    if (msg.t === 'throw') return void this.match.throw(msg.id, msg.angle, msg.power);
+    if (msg.t === 'throw') return void this.match.throw(msg.id, msg.angle, msg.power, msg.turn);
     if (!this.aimLimit.allow(from)) return;
     this.match.aim(msg.id, msg.angle, msg.power);
   }
@@ -246,8 +246,11 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     case 'lobby':
       return { t: m.t };
     case 'aim':
+      return seatOk(m.id) && num(m.angle) && num(m.power) ? { t: 'aim', id: m.id, angle: m.angle, power: m.power } : null;
     case 'throw':
-      return seatOk(m.id) && num(m.angle) && num(m.power) ? { t: m.t, id: m.id, angle: m.angle, power: m.power } : null;
+      return seatOk(m.id) && num(m.angle) && num(m.power) && num(m.turn)
+        ? { t: 'throw', id: m.id, angle: m.angle, power: m.power, turn: m.turn }
+        : null;
   }
   return null;
 }

@@ -86,9 +86,10 @@ export interface GameState {
   craters: Crater[];
   wind: number;
   turnTeams: number[]; // teams in the order they take turns
-  lastThrower: number[]; // per team, id of its most recent thrower, or -1
+  lastThrower: number[]; // per team, id of its most recent thrower
   current: number; // id of the player whose turn it is
   phase: Phase;
+  turn: number; // changes every turn; throws must name it, so stale ones are ignored
   roundWinner: number | null; // team, or -1 for a draw
   matchWinner: number | null;
 }
@@ -154,6 +155,7 @@ export function createMatch(specs: PlayerSpec[], config: MatchConfig): GameState
     lastThrower: [-1, -1, -1, -1],
     current: 0,
     phase: 'aiming',
+    turn: randomSeed(), // random start, so a throw from an earlier match can't match
     roundWinner: null,
     matchWinner: null,
   };
@@ -204,7 +206,11 @@ export function startRound(state: GameState, seed: number): void {
   const teams = [...new Set(state.players.map((p) => p.team))].sort((a, b) => a - b);
   const lead = (state.round - 1) % teams.length;
   state.turnTeams = [...teams.slice(lead), ...teams.slice(0, lead)];
-  // lastThrower carries over between rounds, so each teammate gets to open in turn.
+  // Each team's opener rotates through its members from round to round.
+  for (const team of teams) {
+    const members = state.players.filter((p) => p.team === team);
+    state.lastThrower[team] = members[(((state.round - 2) % members.length) + members.length) % members.length]!.id;
+  }
   state.current = nextMember(state, state.turnTeams[0]!)!;
 }
 
