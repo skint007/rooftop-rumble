@@ -19,7 +19,8 @@ const A = 0;
 const B = 1;
 const LB = 4;
 const RB = 5;
-const TAPPABLE = [A, B, LB, RB];
+const START = 9;
+const TAPPABLE = [A, B, LB, RB, START];
 const HELD_BEFORE = -1; // heldSince marker: held since before the menu appeared
 const DPAD: Record<Dir, number> = { up: 12, down: 13, left: 14, right: 15 };
 
@@ -68,13 +69,18 @@ export function startPadNav(): void {
   const heldSince = new Map<string, number>();
   const stickAxis = new Map<number, 'x' | 'y' | null>(); // per pad, the axis the stick is counting
   const stickLocked = new Set<number>(); // pads whose stick is ignored until it returns to centre
+  // Only a stick that's tilted right now needs to wait; a centred one is free to use at once.
+  const lockTiltedSticks = () =>
+    gamepads().forEach((p, i) => {
+      if (p && (Math.abs(p.axes[0] ?? 0) >= STICK_RELEASE || Math.abs(p.axes[1] ?? 0) >= STICK_RELEASE)) stickLocked.add(i);
+    });
   const lastRepeat = new Map<string, number>();
 
   // Directions held right now are ignored until released (used when the screen or the
   // input device changes, so a held stick doesn't keep moving focus somewhere new).
   const ignoreHeld = () => {
     for (const key of heldSince.keys()) heldSince.set(key, HELD_BEFORE);
-    gamepads().forEach((p, i) => p && stickLocked.add(i));
+    lockTiltedSticks();
   };
   let lastScreen: HTMLElement | null = null;
   const hint = document.querySelector<HTMLElement>('.pad-hint');
@@ -126,6 +132,9 @@ export function startPadNav(): void {
     const aTap = tap(A);
     const bTap = tap(B);
     const step = (tap(RB) ? 1 : 0) - (tap(LB) ? 1 : 0);
+    // Start opens the in-game menu (play.ts handles that); here it just counts as pad use,
+    // so the hint shows even if the keyboard was used last.
+    if (tap(START)) document.body.classList.add('pad-nav');
     prev = pressedNow;
 
     const screen = document.querySelector<HTMLElement>('.overlay:not([hidden])');
@@ -142,7 +151,7 @@ export function startPadNav(): void {
       // ignored until released, so opening the menu doesn't send focus running.
       heldSince.clear();
       for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
-      gamepads().forEach((pad, i) => pad && stickLocked.add(i));
+      lockTiltedSticks();
       lastScreen = null;
       return;
     }
@@ -150,7 +159,7 @@ export function startPadNav(): void {
       // A screen (re)appearing starts fresh: restoring is only for redraws within one showing,
       // so reopening the menu never lands on End match by itself.
       for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
-      gamepads().forEach((pad, i) => pad && stickLocked.add(i));
+      lockTiltedSticks();
       spot = null;
       lastScreen = screen;
     }
