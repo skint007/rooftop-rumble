@@ -1,0 +1,23 @@
+{
+  "name": "rooftop-rumble",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rooftop artillery for up to 4 players, local or online.",
+  "scripts": {
+    "start": "node --no-warnings src/server/server.ts",
+    "dev": "node --no-warnings --watch src/server/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=23.6"
+  },
+  "dependencies": {
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2"
+  }
+}
