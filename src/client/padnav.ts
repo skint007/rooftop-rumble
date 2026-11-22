@@ -1,8 +1,9 @@
 /**
- * Lets a gamepad drive the menus. While a menu screen is showing, the d-pad or left
- * stick moves focus to the nearest control in that direction, LB/RB step through every
- * control in order, A presses or toggles it, left/right change a dropdown, and B presses
- * the screen's back button (`data-back`).
+ * Lets a gamepad drive the menus with one simple scheme. While a menu screen is showing:
+ * up/down (d-pad, left stick, or LB/RB) step through the controls in page order, left/right
+ * change the focused dropdown (or move along a row of buttons), A presses a button or
+ * toggles a checkbox, and B presses the screen's back button (`data-back`). Text fields are
+ * skipped, since a controller can't type. A hint bar shows the scheme while a pad is in use.
  * It has its own frame loop and ignores the pads while no menu screen is showing.
  */
 import { gamepads } from './input.ts';
@@ -20,36 +21,11 @@ const TAPPABLE = [A, B, LB, RB];
 const HELD_BEFORE = -1; // heldSince marker: held since before the menu appeared
 const DPAD: Record<Dir, number> = { up: 12, down: 13, left: 14, right: 15 };
 
-/** Controls on the visible menu screen, in page order. */
+/** Controls a pad can use on the visible menu screen, in page order. Text fields are left out. */
 function controls(screen: HTMLElement): HTMLElement[] {
-  return [...screen.querySelectorAll<HTMLElement>('button, select, input')].filter(
+  return [...screen.querySelectorAll<HTMLElement>('button, select, input[type=checkbox]')].filter(
     (el) => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0,
   );
-}
-
-function centre(el: HTMLElement): { x: number; y: number } {
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-}
-
-// The nearest control in a direction, favouring ones straight ahead over ones off to the side.
-function nearest(from: HTMLElement, list: HTMLElement[], dir: Dir): HTMLElement | undefined {
-  const c = centre(from);
-  let best: HTMLElement | undefined;
-  let bestScore = Infinity;
-  for (const el of list) {
-    if (el === from) continue;
-    const p = centre(el);
-    const ahead = dir === 'down' ? p.y - c.y : dir === 'up' ? c.y - p.y : dir === 'right' ? p.x - c.x : c.x - p.x;
-    const side = dir === 'up' || dir === 'down' ? Math.abs(p.x - c.x) : Math.abs(p.y - c.y);
-    if (ahead <= 4) continue;
-    const score = ahead + side * 2;
-    if (score < bestScore) {
-      bestScore = score;
-      best = el;
-    }
-  }
-  return best;
 }
 
 /**
@@ -128,6 +104,7 @@ export function startPadNav(): void {
     prev = pressedNow;
 
     const screen = document.querySelector<HTMLElement>('.overlay:not([hidden])');
+    document.body.classList.toggle('menu-open', screen !== null); // shows the pad hint bar
     if (!screen) {
       // Directions held while no menu is showing (e.g. setting power in a match) are
       // ignored until released, so opening the menu doesn't send focus running.
@@ -185,20 +162,27 @@ export function startPadNav(): void {
       return;
     }
     if (aTap) {
+      // A presses buttons and toggles checkboxes. Dropdowns only change with left/right,
+      // so A can't change a setting by accident.
       remember(screen);
-      if (active instanceof HTMLSelectElement) stepSelect(active, 1);
-      else if (!(active instanceof HTMLInputElement && active.type !== 'checkbox')) active.click();
+      if (!(active instanceof HTMLSelectElement)) active.click();
       return;
     }
-    // Bumpers walk every control in page order, so none is out of reach whatever the layout.
-    if (step) list[(list.indexOf(active) + step + list.length) % list.length]?.focus();
+    // Moves go to the previous/next control in page order (stopping at the ends).
+    const go = (by: number) => {
+      const i = Math.min(list.length - 1, Math.max(0, list.indexOf(active) + by));
+      list[i]?.focus();
+    };
+    if (step) go(step);
     for (const dir of moves) {
-      if (active instanceof HTMLSelectElement && (dir === 'left' || dir === 'right')) {
+      if (dir === 'up' || dir === 'down') {
+        go(dir === 'down' ? 1 : -1);
+      } else if (active instanceof HTMLSelectElement) {
         remember(screen); // before the change, which may redraw and drop focus
         stepSelect(active, dir === 'left' ? -1 : 1);
-        continue;
+      } else if (!(active instanceof HTMLInputElement)) {
+        go(dir === 'right' ? 1 : -1); // along a row of buttons
       }
-      nearest(active, list, dir)?.focus();
     }
     remember(screen);
   };

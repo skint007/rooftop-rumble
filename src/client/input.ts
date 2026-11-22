@@ -177,8 +177,12 @@ export class AimInput {
     if (this.tapped('Space') || this.tapped('Enter')) fire = true;
 
     const now = performance.now();
-    gamepads().forEach((p, i) => {
-      if (!p || (pad !== 'any' && pad !== i)) return;
+    const pads = gamepads();
+    // A seat bound to a slot with no controller in it takes any controller, so a binding
+    // that doesn't match the hardware can't lock the player out.
+    const only = pad !== 'any' && pads[pad] ? pad : 'any';
+    pads.forEach((p, i) => {
+      if (!p || (only !== 'any' && only !== i)) return;
       const [lx = 0, , , ry = 0] = p.axes;
       // Stick left turns the aim left (toward 180°); stick up adds power.
       aim.angle -= stickRate(lx) * STICK_ANGLE_RATE * dt;

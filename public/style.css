@@ -282,3 +282,22 @@ label {
 .small:empty {
   display: none;
 }
+
+/* Shown while a controller is driving a menu (padnav.ts sets both classes). */
+.pad-hint {
+  display: none;
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--line);
+  font-size: 10px;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+body.pad-nav.menu-open .pad-hint {
+  display: block;
+}
