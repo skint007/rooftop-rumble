@@ -10,7 +10,8 @@ import { gamepads } from './input.ts';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
 
-const STICK = 0.5;
+const STICK = 0.5; // stick tilt that starts a direction
+const STICK_RELEASE = 0.35; // ...and the tilt it has to drop below to end it
 const SWITCH_MARGIN = 0.2; // the other stick axis must win by this much to change direction
 const REPEAT_DELAY_MS = 350;
 const REPEAT_EVERY_MS = 140;
@@ -66,14 +67,18 @@ export function startPadNav(): void {
   // Per pad and direction, so one pad holding a direction doesn't hide another's press.
   const heldSince = new Map<string, number>();
   const stickAxis = new Map<number, 'x' | 'y' | null>(); // per pad, the axis the stick is counting
+  const stickLocked = new Set<number>(); // pads whose stick is ignored until it returns to centre
   const lastRepeat = new Map<string, number>();
 
   // Directions held right now are ignored until released (used when the screen or the
   // input device changes, so a held stick doesn't keep moving focus somewhere new).
   const ignoreHeld = () => {
     for (const key of heldSince.keys()) heldSince.set(key, HELD_BEFORE);
+    gamepads().forEach((p, i) => p && stickLocked.add(i));
   };
   let lastScreen: HTMLElement | null = null;
+  const hint = document.querySelector<HTMLElement>('.pad-hint');
+  let lastHintSpace = '';
 
   // The focus ring and focus restoring are for pad use only; mouse or keyboard input hands back.
   const handBack = () => {
@@ -94,22 +99,29 @@ export function startPadNav(): void {
     pads.forEach((p, i) => {
       if (!p) return;
       const b = (n: number) => p.buttons[n]?.pressed ?? false;
-      // The stick counts one axis at a time, so a diagonal tilt is one direction. It keeps
-      // its current axis until the other clearly wins, so wobble near 45° doesn't flip it.
+      // The stick gives one direction at a time. It starts past STICK and holds until it
+      // drops below STICK_RELEASE, and keeps its axis until the other clearly wins, so
+      // wobble near a threshold or a diagonal doesn't flip it.
       const [ax = 0, ay = 0] = p.axes;
       const [mx, my] = [Math.abs(ax), Math.abs(ay)];
+      const centred = mx < STICK_RELEASE && my < STICK_RELEASE;
+      // After a screen change or keyboard/mouse use, the stick waits until it's let go.
+      if (centred) stickLocked.delete(i);
       const was = stickAxis.get(i);
-      const axis =
-        mx <= STICK && my <= STICK ? null
-        : was === 'x' && mx > STICK && my < mx + SWITCH_MARGIN ? 'x'
-        : was === 'y' && my > STICK && mx < my + SWITCH_MARGIN ? 'y'
-        : mx >= my ? 'x' : 'y';
+      const axis = stickLocked.has(i)
+        ? null
+        : was === 'x' && mx >= STICK_RELEASE && my < mx + SWITCH_MARGIN
+          ? 'x'
+          : was === 'y' && my >= STICK_RELEASE && mx < my + SWITCH_MARGIN
+            ? 'y'
+            : mx > STICK || my > STICK
+              ? mx >= my ? 'x' : 'y'
+              : null;
       stickAxis.set(i, axis);
-      const [x, y] = axis === 'x' ? [ax, 0] : axis === 'y' ? [0, ay] : [0, 0];
-      if (b(DPAD.up) || y < -STICK) held.set(`${i}:up`, 'up');
-      if (b(DPAD.down) || y > STICK) held.set(`${i}:down`, 'down');
-      if (b(DPAD.left) || x < -STICK) held.set(`${i}:left`, 'left');
-      if (b(DPAD.right) || x > STICK) held.set(`${i}:right`, 'right');
+      if (b(DPAD.up) || (axis === 'y' && ay < 0)) held.set(`${i}:up`, 'up');
+      if (b(DPAD.down) || (axis === 'y' && ay > 0)) held.set(`${i}:down`, 'down');
+      if (b(DPAD.left) || (axis === 'x' && ax < 0)) held.set(`${i}:left`, 'left');
+      if (b(DPAD.right) || (axis === 'x' && ax > 0)) held.set(`${i}:right`, 'right');
     });
     const aTap = tap(A);
     const bTap = tap(B);
@@ -119,11 +131,18 @@ export function startPadNav(): void {
     const screen = document.querySelector<HTMLElement>('.overlay:not([hidden])');
     document.body.classList.toggle('menu-open', screen !== null); // shows the pad hint bar
     document.body.classList.toggle('menu-has-back', screen?.querySelector('[data-back]') != null); // "B back" in the hint
+    // Reserve the hint bar's real height (it wraps on narrow screens) below every menu.
+    const hintSpace = `${(hint?.offsetHeight ?? 0) + 24}px`;
+    if (hintSpace !== lastHintSpace) {
+      document.documentElement.style.setProperty('--hint-space', hintSpace);
+      lastHintSpace = hintSpace;
+    }
     if (!screen) {
       // Directions held while no menu is showing (e.g. setting power in a match) are
       // ignored until released, so opening the menu doesn't send focus running.
       heldSince.clear();
       for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
+      gamepads().forEach((pad, i) => pad && stickLocked.add(i));
       lastScreen = null;
       return;
     }
@@ -131,6 +150,7 @@ export function startPadNav(): void {
       // A screen (re)appearing starts fresh: restoring is only for redraws within one showing,
       // so reopening the menu never lands on End match by itself.
       for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
+      gamepads().forEach((pad, i) => pad && stickLocked.add(i));
       spot = null;
       lastScreen = screen;
     }

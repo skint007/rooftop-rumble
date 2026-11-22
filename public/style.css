@@ -56,8 +56,8 @@ body {
   place-items: center;
   /* Room at the bottom for the controller hint bar. Always on, so the layout never shifts
      when the hint appears or a mouse press hides it mid-click. */
-  padding: 16px 16px 60px;
-  scroll-padding-bottom: 60px;
+  padding: 16px 16px var(--hint-space, 60px);
+  scroll-padding-bottom: var(--hint-space, 60px);
   background: rgba(5, 7, 20, 0.6);
   overflow-y: auto;
 }
@@ -67,7 +67,7 @@ body {
 .overlay.clear {
   background: none;
   place-items: end center;
-  padding-bottom: max(6vh, 60px); /* room for the controller hint bar */
+  padding-bottom: max(6vh, var(--hint-space, 60px)); /* room for the controller hint bar */
   pointer-events: none;
 }
 .overlay.clear .panel {
@@ -288,7 +288,8 @@ label {
 
 /* Shown while a controller is driving a menu (padnav.ts sets both classes). */
 .pad-hint {
-  display: none;
+  /* Laid out even when hidden, so its height can be measured and reserved without shifting the page. */
+  visibility: hidden;
   position: fixed;
   left: 50%;
   bottom: 12px;
@@ -311,5 +312,5 @@ body.menu-has-back .pad-hint-back {
   display: inline;
 }
 body.pad-nav.menu-open .pad-hint {
-  display: block;
+  visibility: visible;
 }
