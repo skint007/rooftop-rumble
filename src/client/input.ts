@@ -64,6 +64,7 @@ export class AimInput {
     };
     const down = (e: PointerEvent) => {
       if (this.drag && this.drag.id !== e.pointerId) return; // a second finger doesn't take over
+      if (this.released) return; // a finished drag hasn't been read yet; don't overwrite it
       if (e.button !== 0) return void (this.drag = null);
       const p = toWorld(e);
       this.drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: p.x, cy: p.y, lx: p.x, ly: p.y, ax: 0, ay: 0, base: null, moved: false };
