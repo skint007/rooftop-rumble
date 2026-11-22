@@ -85,8 +85,9 @@ document.querySelectorAll<HTMLButtonElement>('[data-go]').forEach((b) => {
   b.onclick = () => {
     sfx.click();
     const go = b.dataset.go as ScreenId;
+    // Any menu navigation leaves the online room, including a connection still opening.
+    disconnect();
     if (go === 'local') renderLocal();
-    if (go === 'online') disconnect();
     show(go);
   };
 });
@@ -378,6 +379,8 @@ function renderLobby(): void {
   const host = L.hostId === L.you;
   const nameOf = (id: string | null) => L.clients.find((c) => c.id === id)?.name ?? '?';
   $('lobby-code').textContent = L.code;
+  // Re-rendering replaces the inputs, so carry over a name being typed and its cursor.
+  const typing = document.activeElement instanceof HTMLInputElement && document.activeElement.dataset.seat ? document.activeElement : null;
   $('lobby-seats').replaceChildren(
     ...L.seats.map((s: LobbySeat, i) => {
       const mine = s.owner === L.you;
@@ -388,6 +391,7 @@ function renderLobby(): void {
         if (host) fields.push(button('Add CPU', () => send({ t: 'cpu', seat: i, on: true }), true));
       } else if (mine) {
         const name = h('input', { value: s.name, maxLength: NAME_MAX });
+        name.dataset.seat = String(i);
         name.onchange = () => send({ t: 'seat', seat: i, name: name.value });
         fields.push(name);
         fields.push(pick(PADS, online?.pads.get(i) ?? 'any', (v) => (online?.pads.set(i, v), renderLobby())));
@@ -411,6 +415,12 @@ function renderLobby(): void {
       );
     }),
   );
+  const again = typing && $('lobby-seats').querySelector<HTMLInputElement>(`input[data-seat="${typing.dataset.seat}"]`);
+  if (typing && again) {
+    again.value = typing.value;
+    again.focus();
+    again.setSelectionRange(typing.selectionStart, typing.selectionEnd);
+  }
   const config = structuredClone(L.config);
   $('lobby-options').replaceChildren(
     ...configControls(config, () => send({ t: 'config', config }), !host),
@@ -457,10 +467,16 @@ $('lobby-leave').onclick = () => {
   disconnect();
   show('online');
 };
-$('lobby-copy').onclick = () => {
-  void navigator.clipboard?.writeText(location.href);
-  $('lobby-copy').textContent = 'Copied!';
-  setTimeout(() => ($('lobby-copy').textContent = 'Copy link'), 1200);
+$('lobby-copy').onclick = async () => {
+  try {
+    // navigator.clipboard is missing on plain-HTTP pages other than localhost.
+    if (!navigator.clipboard) throw new Error('no clipboard');
+    await navigator.clipboard.writeText(location.href);
+    $('lobby-copy').textContent = 'Copied!';
+    setTimeout(() => ($('lobby-copy').textContent = 'Copy link'), 1200);
+  } catch {
+    window.prompt('Copy this link:', location.href);
+  }
 };
 
 // A ?room=CODE link drops you on the join screen with the code filled in.
