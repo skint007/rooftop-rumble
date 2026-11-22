@@ -299,6 +299,9 @@ function disconnect(): void {
   net = null;
   online = null;
   lobby = null;
+  pendingConfig = {};
+  for (const { timer } of pendingNames.values()) clearTimeout(timer);
+  pendingNames.clear();
   ws?.close();
   if (location.search) history.replaceState(null, '', location.pathname);
 }
@@ -345,6 +348,10 @@ function onServer(msg: ServerMsg): void {
 function onLobby(next: LobbyView): void {
   const first = lobby === null;
   lobby = next;
+  // Drop pending setting changes the server now reflects.
+  for (const key of Object.keys(pendingConfig) as (keyof MatchConfig)[]) {
+    if (next.config[key] === pendingConfig[key]) delete pendingConfig[key];
+  }
   history.replaceState(null, '', `?room=${next.code}`);
   if (next.inGame && !play) {
     startOnlinePlay();
@@ -379,7 +386,25 @@ function updateResultsButtons(): void {
   $('results-note').textContent = host ? '' : 'Waiting for the host to head back to the lobby…';
 }
 
-const pendingNameSaves = new Map<number, () => void>(); // seat -> save not yet sent
+// Seat name edits not yet sent: one debounced save per seat, bound to that seat's current input.
+const pendingNames = new Map<number, { timer: ReturnType<typeof setTimeout>; input: HTMLInputElement }>();
+
+function scheduleNameSave(seat: number, input: HTMLInputElement): void {
+  clearTimeout(pendingNames.get(seat)?.timer);
+  pendingNames.set(seat, { timer: setTimeout(() => saveName(seat), 400), input });
+}
+
+function saveName(seat: number): void {
+  const pending = pendingNames.get(seat);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingNames.delete(seat);
+  send({ t: 'seat', seat, name: pending.input.value });
+}
+
+// Setting changes the server hasn't echoed back yet. Every send includes them, so two
+// quick changes can't undo each other.
+let pendingConfig: Partial<MatchConfig> = {};
 
 // A lobby update that lands mid-click would replace the button under the pointer and
 // swallow the click, so re-rendering waits until the pointer is released.
@@ -417,18 +442,11 @@ function renderLobby(): void {
         const name = h('input', { value: s.name, maxLength: NAME_MAX });
         name.dataset.seat = String(i);
         // Save while typing (debounced), so a lobby re-render can't lose the edit.
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const save = () => {
-          clearTimeout(timer);
-          pendingNameSaves.delete(i);
-          send({ t: 'seat', seat: i, name: name.value });
+        name.oninput = () => scheduleNameSave(i, name);
+        name.onchange = () => {
+          scheduleNameSave(i, name);
+          saveName(i);
         };
-        name.oninput = () => {
-          clearTimeout(timer);
-          timer = setTimeout(save, 400);
-          pendingNameSaves.set(i, save);
-        };
-        name.onchange = save;
         fields.push(name);
         fields.push(pick(PADS, online?.pads.get(i) ?? 'any', (v) => (online?.pads.set(i, v), renderLobby())));
         if (L.config.teams) fields.push(pick(TEAMS, s.team, (v) => send({ t: 'seat', seat: i, team: v })));
@@ -454,12 +472,19 @@ function renderLobby(): void {
   const again = typing && $('lobby-seats').querySelector<HTMLInputElement>(`input[data-seat="${typing.dataset.seat}"]`);
   if (typing && again) {
     again.value = typing.value;
+    // A save still waiting on the old input now reads the new one.
+    const seat = Number(typing.dataset.seat);
+    if (pendingNames.has(seat)) scheduleNameSave(seat, again);
     again.focus();
     again.setSelectionRange(typing.selectionStart, typing.selectionEnd);
   }
   $('lobby-options').replaceChildren(
     // Apply the change to the newest config we've heard about, not the one this render started from.
-    ...configControls(L.config, (patch) => lobby && send({ t: 'config', config: { ...lobby.config, ...patch } }), !host),
+    ...configControls({ ...L.config, ...pendingConfig }, (patch) => {
+      if (!lobby) return;
+      pendingConfig = { ...pendingConfig, ...patch };
+      send({ t: 'config', config: { ...lobby.config, ...pendingConfig } });
+    }, !host),
     h('span', { className: 'small' }, `${L.clients.length} connected${host ? ' · you are host' : ''}`),
   );
   $<HTMLButtonElement>('lobby-start').hidden = !host;
@@ -495,7 +520,7 @@ $('online-join').onclick = () => {
 };
 $('lobby-start').onclick = () => {
   // Send any name still waiting on its debounce first; the server handles messages in order.
-  for (const save of [...pendingNameSaves.values()]) save();
+  for (const seat of [...pendingNames.keys()]) saveName(seat);
   sfx.click();
   $('lobby-error').textContent = '';
   send({ t: 'start' });

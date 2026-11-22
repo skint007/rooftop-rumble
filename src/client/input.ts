@@ -158,10 +158,11 @@ export class AimInput {
     });
   }
 
-  /** Forgets any drag in progress, e.g. one started while it wasn't this player's turn. */
+  /** Forgets any drag or key press in progress, e.g. one made while it wasn't this player's turn. */
   cancel(): void {
     this.drag = null;
     this.released = false;
+    this.pressed.clear();
   }
 
   get dragging(): boolean {

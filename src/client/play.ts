@@ -108,6 +108,8 @@ export class Play {
       shake: 0,
     };
     this.thrown = false;
+    // A press made before this turn arrived (even in the same frame) shouldn't throw for it.
+    this.input.cancel();
     if (fresh) {
       this.flash(`ROUND ${state.round}`, state.wind === 0 ? 'Calm night' : `Wind ${state.wind > 0 ? '→' : '←'} ${Math.abs(state.wind)}`);
     }
