@@ -28,7 +28,7 @@ Controls on your turn:
 | Gamepad | left stick left/right (push further to turn faster), d-pad left/right for 0.5° steps | right stick up/down, d-pad up/down for 1% steps | A |
 | Keyboard | ← → | ↑ ↓ (hold Shift for fine steps) | Space / Enter |
 
-Menus work with a controller too: d-pad or left stick to move, LB/RB to step through every control, A to press, left/right to change a dropdown, B to go back. Esc or the gamepad Start button opens the in-game menu. Each seat can be tied to one gamepad, or "Any pad" for hot-seat play.
+Menus work with a controller too: up/down (d-pad, left stick or LB/RB) to move through the controls, left/right to change a setting, A to press, B to go back. If a seat is set to a controller slot that has nothing plugged in, any controller can play it. Esc or the gamepad Start button opens the in-game menu. Each seat can be tied to one gamepad, or "Any pad" for hot-seat play.
 
 ## Docker
 
