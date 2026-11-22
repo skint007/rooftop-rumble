@@ -4,6 +4,7 @@ import { MatchRunner } from '../shared/match.ts';
 import { NAME_MAX, ROOM_CODE_LENGTH, type ClientMsg, type LobbySeat, type LobbyView, type ServerMsg } from '../shared/protocol.ts';
 import { sfx, toggleMute, unlockAudio } from './audio.ts';
 import type { DragMode, PadBinding } from './input.ts';
+import { startPadNav } from './padnav.ts';
 import { Play, type Session } from './play.ts';
 
 // ---------- small DOM helpers ----------
@@ -72,6 +73,8 @@ function show(id: ScreenId | null): void {
   for (const s of screens) $(s).hidden = s !== id;
   $('menu-btn').hidden = !(play && id === null);
   if (play) play.inputBlocked = id === 'menu';
+  // Back in the match: re-sample pads so the A that pressed Resume doesn't also throw.
+  if (play && id === null) play.input.cancel();
   // A hidden button keeping focus would still catch Enter and Space.
   if (id === null && document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
@@ -348,6 +351,10 @@ function onServer(msg: ServerMsg): void {
 function onLobby(next: LobbyView): void {
   const first = lobby === null;
   lobby = next;
+  if (first) {
+    $('lobby-hint').textContent = 'Share the code or link. Claim more than one seat to play couch + online.';
+    $('lobby-copy').textContent = 'Copy link';
+  }
   // Drop pending setting changes the server now reflects.
   for (const key of Object.keys(pendingConfig) as (keyof MatchConfig)[]) {
     if (next.config[key] === pendingConfig[key]) delete pendingConfig[key];
@@ -579,9 +586,13 @@ $('lobby-copy').onclick = async () => {
     $('lobby-copy').textContent = 'Copied!';
     setTimeout(() => ($('lobby-copy').textContent = 'Copy link'), 1200);
   } catch {
-    window.prompt('Copy this link:', location.href);
+    // Show the link instead of a prompt, which a controller can't dismiss.
+    $('lobby-hint').textContent = `Copy this link: ${location.href}`;
+    $('lobby-copy').textContent = 'Link shown below';
   }
 };
+
+startPadNav();
 
 // A ?room=CODE link drops you on the join screen with the code filled in.
 const roomParam = new URLSearchParams(location.search).get('room');
