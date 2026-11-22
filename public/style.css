@@ -54,7 +54,10 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 16px;
+  /* Room at the bottom for the controller hint bar. Always on, so the layout never shifts
+     when the hint appears or a mouse press hides it mid-click. */
+  padding: 16px 16px 60px;
+  scroll-padding-bottom: 60px;
   background: rgba(5, 7, 20, 0.6);
   overflow-y: auto;
 }
@@ -290,19 +293,23 @@ label {
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.8);
   border: 2px solid var(--line);
   font-size: 10px;
+  line-height: 1.6;
+  text-align: center;
   color: var(--text);
-  white-space: nowrap;
   pointer-events: none;
+}
+.pad-hint-back {
+  display: none;
+}
+body.menu-has-back .pad-hint-back {
+  display: inline;
 }
 body.pad-nav.menu-open .pad-hint {
   display: block;
-}
-/* Keep focused controls clear of the hint bar when a menu scrolls. */
-body.pad-nav.menu-open .overlay {
-  padding-bottom: 60px;
-  scroll-padding-bottom: 60px;
 }

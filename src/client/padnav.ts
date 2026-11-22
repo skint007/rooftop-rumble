@@ -92,7 +92,9 @@ export function startPadNav(): void {
     pads.forEach((p, i) => {
       if (!p) return;
       const b = (n: number) => p.buttons[n]?.pressed ?? false;
-      const [x = 0, y = 0] = p.axes;
+      // The stick only counts its stronger axis, so a diagonal tilt is one direction.
+      const [ax = 0, ay = 0] = p.axes;
+      const [x, y] = Math.abs(ax) >= Math.abs(ay) ? [ax, 0] : [0, ay];
       if (b(DPAD.up) || y < -STICK) held.set(`${i}:up`, 'up');
       if (b(DPAD.down) || y > STICK) held.set(`${i}:down`, 'down');
       if (b(DPAD.left) || x < -STICK) held.set(`${i}:left`, 'left');
@@ -105,6 +107,7 @@ export function startPadNav(): void {
 
     const screen = document.querySelector<HTMLElement>('.overlay:not([hidden])');
     document.body.classList.toggle('menu-open', screen !== null); // shows the pad hint bar
+    document.body.classList.toggle('menu-has-back', screen?.querySelector('[data-back]') != null); // "B back" in the hint
     if (!screen) {
       // Directions held while no menu is showing (e.g. setting power in a match) are
       // ignored until released, so opening the menu doesn't send focus running.
@@ -174,15 +177,20 @@ export function startPadNav(): void {
       list[i]?.focus();
     };
     if (step) go(step);
-    for (const dir of moves) {
+    // One move per frame, so two directions at once (e.g. d-pad diagonals) can't both act
+    // and the second can't land on a control the first one just left.
+    for (const dir of moves.slice(0, step ? 0 : 1)) {
       if (dir === 'up' || dir === 'down') {
         go(dir === 'down' ? 1 : -1);
       } else if (active instanceof HTMLSelectElement) {
         remember(screen); // before the change, which may redraw and drop focus
         stepSelect(active, dir === 'left' ? -1 : 1);
       } else if (active instanceof HTMLButtonElement) {
-        // Only along this row of buttons; never off its end onto a setting.
-        const row = list.filter((c) => c instanceof HTMLButtonElement && c.parentElement === active.parentElement);
+        // Only along this row of buttons (same parent, same line); never off its end onto a setting.
+        const top = active.getBoundingClientRect().top;
+        const row = list.filter(
+          (c) => c instanceof HTMLButtonElement && c.parentElement === active.parentElement && Math.abs(c.getBoundingClientRect().top - top) < 8,
+        );
         row[row.indexOf(active) + (dir === 'right' ? 1 : -1)]?.focus();
       }
     }
