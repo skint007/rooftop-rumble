@@ -206,10 +206,12 @@ export function startRound(state: GameState, seed: number): void {
   const teams = [...new Set(state.players.map((p) => p.team))].sort((a, b) => a - b);
   const lead = (state.round - 1) % teams.length;
   state.turnTeams = [...teams.slice(lead), ...teams.slice(0, lead)];
-  // Each team's opener rotates through its members from round to round.
+  // Each time a team leads off, the next of its members opens. Set lastThrower to the
+  // member just before that one, so nextMember picks it.
+  const timesLed = Math.floor((state.round - 1) / teams.length);
   for (const team of teams) {
     const members = state.players.filter((p) => p.team === team);
-    state.lastThrower[team] = members[(((state.round - 2) % members.length) + members.length) % members.length]!.id;
+    state.lastThrower[team] = members[(timesLed + members.length - 1) % members.length]!.id;
   }
   state.current = nextMember(state, state.turnTeams[0]!)!;
 }
