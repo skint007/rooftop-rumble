@@ -278,6 +278,8 @@ export class Play {
     if (!this.running) return;
     // Schedule first, so one bad frame can't stop the loop for good.
     requestAnimationFrame((t) => this.loop(t, now));
+    // Check Start before handleInput, which can re-sample the pads and hide this press.
+    if (this.input.padTapped(9)) this.onPause();
     const dt = Math.min(0.05, (now - last) / 1000);
     const scene = this.scene;
     if (scene) {
@@ -288,7 +290,6 @@ export class Play {
       this.g.fillStyle = '#0b1026';
       this.g.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
-    if (this.input.padTapped(9)) this.onPause();
     this.input.endFrame();
   }
 
