@@ -25,6 +25,18 @@ Controls on your turn:
 
 Esc or the gamepad Start button opens the menu. Each seat can be tied to one gamepad, or "Any pad" for hot-seat play.
 
+## Docker
+
+CI publishes an image to `ghcr.io/skint007/rooftop-rumble` on every push to `main` (`latest` and `sha-<commit>`) and for version tags (`v1.2.3` gives `1.2.3` and `1.2`).
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/skint007/rooftop-rumble:latest
+```
+
+`compose.yaml` is an example deployment with a read-only filesystem and small resource limits. Rooms live in memory, so restarting the container ends any running matches. Online play uses a WebSocket at `/ws`, so a reverse proxy in front of it has to allow WebSocket upgrades.
+
+To cut a release, bump `version` in `package.json`, merge, then tag that commit `v<version>` and push the tag.
+
 ## Layout
 
 - `src/shared/game.ts` holds the rules: city generation, throw physics, damage, CPU aiming. Pure functions, used by both sides.

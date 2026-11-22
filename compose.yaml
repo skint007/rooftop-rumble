@@ -1,0 +1,13 @@
+# Example deployment. Rooms live in memory, so there are no volumes.
+# To keep it private, bind the port to one address, e.g. "127.0.0.1:8080:8080".
+services:
+  rooftop-rumble:
+    image: ghcr.io/skint007/rooftop-rumble:${RUMBLE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    cpus: 1
