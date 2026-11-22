@@ -42,13 +42,17 @@ export class AimInput {
       canvas.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
-      if (!this.drag) return;
+      if (!this.drag || this.released) return; // a released drag keeps its release point
       const p = toWorld(e);
       this.drag.cx = p.x;
       this.drag.cy = p.y;
     };
-    const up = () => {
-      if (this.drag) this.released = true;
+    const up = (e: PointerEvent) => {
+      if (!this.drag) return;
+      const p = toWorld(e);
+      this.drag.cx = p.x;
+      this.drag.cy = p.y;
+      this.released = true;
     };
     const keydown = (e: KeyboardEvent) => {
       // Keys aimed at a form control (e.g. Enter on a menu button) aren't game input.

@@ -463,11 +463,17 @@ function renderLobby(): void {
   $('lobby-seats').replaceChildren(
     ...L.seats.map((s: LobbySeat, i) => {
       const mine = s.owner === L.you;
+      // Redraws can wait while a button is held. Act only if the seat still holds what the button showed.
+      const still = (action: () => void) => () => {
+        const now = lobby?.seats[i];
+        if (now?.kind === s.kind && now.owner === s.owner) action();
+        else renderLobby();
+      };
       const fields: (HTMLElement | string)[] = [];
       if (s.kind === 'open') {
         fields.push(h('span', { className: 'who' }, 'Open seat'));
-        fields.push(button('Join', () => send({ t: 'claim', seat: i })));
-        if (host) fields.push(button('Add CPU', () => send({ t: 'cpu', seat: i, on: true }), true));
+        fields.push(button('Join', still(() => send({ t: 'claim', seat: i }))));
+        if (host) fields.push(button('Add CPU', still(() => send({ t: 'cpu', seat: i, on: true })), true));
       } else if (mine) {
         const name = h('input', { value: s.name, maxLength: NAME_MAX });
         name.dataset.seat = String(i);
@@ -480,16 +486,16 @@ function renderLobby(): void {
         fields.push(name);
         fields.push(pick(PADS, online?.pads.get(i) ?? 'any', (v) => (online?.pads.set(i, v), renderLobby())));
         if (L.config.teams) fields.push(pick(TEAMS, s.team, (v) => send({ t: 'seat', seat: i, team: v })));
-        fields.push(button('Leave', () => send({ t: 'release', seat: i }), true));
+        fields.push(button('Leave', still(() => send({ t: 'release', seat: i })), true));
       } else if (s.kind === 'cpu') {
         fields.push(h('span', { className: 'who' }, s.name, h('em', {}, 'Computer')));
         fields.push(pick(DIFFS, s.difficulty, (v) => send({ t: 'seat', seat: i, difficulty: v }), !host));
         if (L.config.teams) fields.push(pick(TEAMS, s.team, (v) => send({ t: 'seat', seat: i, team: v }), !host));
-        if (host) fields.push(button('Remove', () => send({ t: 'release', seat: i }), true));
+        if (host) fields.push(button('Remove', still(() => send({ t: 'release', seat: i })), true));
       } else {
         fields.push(h('span', { className: 'who' }, s.name, h('em', {}, `${nameOf(s.owner)}${s.owner === L.hostId ? ' · host' : ''}`)));
         if (L.config.teams) fields.push(h('span', {}, `Team ${teamName(s.team)}`));
-        if (host) fields.push(button('Kick', () => send({ t: 'release', seat: i }), true));
+        if (host) fields.push(button('Kick', still(() => send({ t: 'release', seat: i })), true));
       }
       return h(
         'div',
