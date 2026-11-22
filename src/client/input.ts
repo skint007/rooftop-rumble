@@ -21,7 +21,7 @@ export interface Aim {
 
 const DRAG_FULL_POWER = 240; // world px of drag for 100% power
 const DRAG_FINE = 0.25; // drag speed with Shift held
-const CLICK_SLOP = 4; // world px a click may wander and still count as a click
+const CLICK_SLOP = 6; // screen px a click (or finger tap) may wander and still count as a click
 const STICK_DEAD = 0.2;
 const STICK_ANGLE_RATE = 45; // degrees/s at full tilt
 const STICK_POWER_RATE = 40; // power %/s at full tilt
@@ -32,8 +32,21 @@ const REPEAT_EVERY_MS = 60;
 
 export class AimInput {
   dragMode: DragMode = 'slingshot';
-  // `base` is the aim when the drag started; the drag is added on top of it.
-  private drag: { id: number; x: number; y: number; cx: number; cy: number; base: Aim | null; moved: boolean } | null = null;
+  // A drag adds its movement on top of `base`, the aim when it started. `ax/ay` is the
+  // movement so far, each frame's share scaled by whether Shift was held then.
+  private drag: {
+    id: number;
+    sx: number; // screen px where it started, for click detection
+    sy: number;
+    cx: number; // latest pointer position, world px
+    cy: number;
+    lx: number; // pointer position already counted into ax/ay
+    ly: number;
+    ax: number;
+    ay: number;
+    base: Aim | null;
+    moved: boolean;
+  } | null = null;
   private held = new Map<string, number>(); // pad button -> when it went down, for d-pad repeat
   private repeats = new Map<string, number>(); // pad button -> repeat ticks already applied
   private released = false;
@@ -53,7 +66,7 @@ export class AimInput {
       if (this.drag && this.drag.id !== e.pointerId) return; // a second finger doesn't take over
       if (e.button !== 0) return void (this.drag = null);
       const p = toWorld(e);
-      this.drag = { id: e.pointerId, x: p.x, y: p.y, cx: p.x, cy: p.y, base: null, moved: false };
+      this.drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, cx: p.x, cy: p.y, lx: p.x, ly: p.y, ax: 0, ay: 0, base: null, moved: false };
       canvas.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
@@ -61,12 +74,14 @@ export class AimInput {
       const p = toWorld(e);
       this.drag.cx = p.x;
       this.drag.cy = p.y;
+      if (Math.hypot(e.clientX - this.drag.sx, e.clientY - this.drag.sy) > CLICK_SLOP) this.drag.moved = true;
     };
     const up = (e: PointerEvent) => {
       if (!this.drag || this.drag.id !== e.pointerId) return;
       const p = toWorld(e);
       this.drag.cx = p.x;
       this.drag.cy = p.y;
+      if (Math.hypot(e.clientX - this.drag.sx, e.clientY - this.drag.sy) > CLICK_SLOP) this.drag.moved = true;
       this.released = true;
     };
     const keydown = (e: KeyboardEvent) => {
@@ -128,16 +143,19 @@ export class AimInput {
     if (this.drag) {
       const d = this.drag;
       d.base ??= { ...aim };
-      const dx = d.cx - d.x;
-      const dy = d.cy - d.y;
-      if (Math.hypot(dx, dy) > CLICK_SLOP) d.moved = true;
+      // Count this frame's movement at this frame's speed, so Shift mid-drag slows it without a jump.
+      const scale = fine ? DRAG_FINE : 1;
+      d.ax += (d.cx - d.lx) * scale;
+      d.ay += (d.cy - d.ly) * scale;
+      d.lx = d.cx;
+      d.ly = d.cy;
       if (d.moved) {
         // The aim as a vector in drag space (x right, y up), plus the drag on top.
         const rad = (d.base.angle * Math.PI) / 180;
         const len = (d.base.power / MAX_POWER) * DRAG_FULL_POWER;
-        const k = (this.dragMode === 'slingshot' ? -1 : 1) * (fine ? DRAG_FINE : 1);
-        const vx = Math.cos(rad) * len + dx * k;
-        const vy = Math.sin(rad) * len - dy * k;
+        const k = this.dragMode === 'slingshot' ? -1 : 1;
+        const vx = Math.cos(rad) * len + d.ax * k;
+        const vy = Math.sin(rad) * len - d.ay * k;
         aim.angle = toAngle(vx, vy);
         aim.power = (Math.hypot(vx, vy) / DRAG_FULL_POWER) * MAX_POWER;
       }
@@ -204,17 +222,18 @@ export class AimInput {
       return 0;
     }
     if (this.padEdge(i, pad, button) || !this.held.has(key)) {
+      // A new press steps once. One already held (e.g. since the last player's turn) starts quietly.
       this.held.set(key, now);
       this.repeats.delete(key);
-      return 1;
+      return this.padEdge(i, pad, button) ? 1 : 0;
     }
     const since = now - this.held.get(key)! - REPEAT_DELAY_MS;
     if (since < 0) return 0;
-    // Count repeat ticks crossed since the last frame.
+    // At most one repeat per frame, so a stalled frame or a background tab can't jump the aim.
     const ticks = Math.floor(since / REPEAT_EVERY_MS);
     const done = this.repeats.get(key) ?? -1;
     this.repeats.set(key, ticks);
-    return Math.max(0, ticks - done);
+    return ticks > done ? 1 : 0;
   }
 
   private padEdge(i: number, pad: Gamepad, button: number): boolean {
