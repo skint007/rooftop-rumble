@@ -17,6 +17,7 @@ const B = 1;
 const LB = 4;
 const RB = 5;
 const TAPPABLE = [A, B, LB, RB];
+const HELD_BEFORE = -1; // heldSince marker: held since before the menu appeared
 const DPAD: Record<Dir, number> = { up: 12, down: 13, left: 14, right: 15 };
 
 /** Controls on the visible menu screen, in page order. */
@@ -118,7 +119,10 @@ export function startPadNav(): void {
 
     const screen = document.querySelector<HTMLElement>('.overlay:not([hidden])');
     if (!screen) {
+      // Directions held while no menu is showing (e.g. setting power in a match) are
+      // ignored until released, so opening the menu doesn't send focus running.
       heldSince.clear();
+      for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
       return;
     }
     // A redraw (lobby update, changed setting) dropped focus: put it back where it was.
@@ -132,6 +136,7 @@ export function startPadNav(): void {
     for (const key of heldSince.keys()) if (!held.has(key)) heldSince.delete(key);
     for (const [key, dir] of held) {
       const since = heldSince.get(key);
+      if (since === HELD_BEFORE) continue;
       if (since === undefined) {
         heldSince.set(key, now);
         lastRepeat.set(key, now);
@@ -168,6 +173,7 @@ export function startPadNav(): void {
     if (step) list[(list.indexOf(active) + step + list.length) % list.length]?.focus();
     for (const dir of moves) {
       if (active instanceof HTMLSelectElement && (dir === 'left' || dir === 'right')) {
+        remember(screen); // before the change, which may redraw and drop focus
         stepSelect(active, dir === 'left' ? -1 : 1);
         continue;
       }
