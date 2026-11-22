@@ -13,7 +13,7 @@ Needs Node 23.6 or newer. The server strips TypeScript types on the fly, so ther
 ## Playing
 
 - **Local**: up to 4 seats, each Human, CPU (easy/normal/hard) or Off. Turn on Teams for co-op, e.g. two humans against two CPUs.
-- **Online**: create a room and share the 4-letter code or link. The host can add CPUs. One browser can claim several seats, so couch and online players can mix. If someone drops mid-match, a CPU takes over their raccoon.
+- **Online**: create a room and share the 5-letter code or link. The host can add CPUs. One browser can claim several seats, so couch and online players can mix. If someone drops mid-match, a CPU takes over their raccoon.
 
 Controls on your turn:
 

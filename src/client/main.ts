@@ -1,7 +1,7 @@
 /** Screens and wiring: title, local setup, online lobby, pause menu and results. */
 import { MAX_PLAYERS, SEAT_COLORS, teamName, type Difficulty, type GameState, type MatchConfig, type PlayerSpec } from '../shared/game.ts';
 import { MatchRunner } from '../shared/match.ts';
-import { NAME_MAX, type ClientMsg, type LobbySeat, type LobbyView, type ServerMsg } from '../shared/protocol.ts';
+import { NAME_MAX, ROOM_CODE_LENGTH, type ClientMsg, type LobbySeat, type LobbyView, type ServerMsg } from '../shared/protocol.ts';
 import { sfx, toggleMute, unlockAudio } from './audio.ts';
 import type { DragMode, PadBinding } from './input.ts';
 import { Play, type Session } from './play.ts';
@@ -466,7 +466,7 @@ $('lobby-copy').onclick = () => {
 // A ?room=CODE link drops you on the join screen with the code filled in.
 const roomParam = new URLSearchParams(location.search).get('room');
 if (roomParam) {
-  $<HTMLInputElement>('online-code').value = roomParam.slice(0, 4).toUpperCase();
+  $<HTMLInputElement>('online-code').value = roomParam.slice(0, ROOM_CODE_LENGTH).toUpperCase();
   show('online');
 } else {
   show('title');
