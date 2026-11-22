@@ -76,7 +76,7 @@ export class Room {
       case 'throw':
         return this.playerMove(from, msg);
       case 'lobby':
-        if (isHost) this.endMatch();
+        if (isHost && this.match && this.lobbyLimit.allow(from)) this.endMatch();
         return;
     }
     if (this.match || !this.lobbyLimit.allow(from)) return;

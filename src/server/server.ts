@@ -107,6 +107,7 @@ wss.on('connection', (ws) => {
   ws.on('pong', () => alive.set(ws, true));
 
   ws.on('message', (data) => {
+    if (ws.readyState !== ws.OPEN) return;
     const msg = parseClientMsg(String(data));
     if (!msg) return send(ws, { t: 'error', message: 'Bad message.' });
     if (msg.t === 'create' || msg.t === 'join') {
@@ -117,7 +118,8 @@ wss.on('connection', (ws) => {
       const target = msg.t === 'create' ? new Room(newCode()) : rooms.get(msg.code.toUpperCase());
       if (!target) {
         send(ws, { t: 'error', message: 'No room with that code.' });
-        if (++failedJoins >= MAX_FAILED_JOINS) ws.close(1008, 'Too many failed joins');
+        // terminate, not close: a closing socket still delivers messages until the handshake ends.
+        if (++failedJoins >= MAX_FAILED_JOINS) ws.terminate();
         return;
       }
       const err = target.join(clientId, msg.name, (m) => send(ws, m));
