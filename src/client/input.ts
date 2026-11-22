@@ -30,6 +30,7 @@ export class AimInput {
 
   /** Hooks into the canvas and window. Call detach() when leaving the game. */
   attach(canvas: HTMLCanvasElement): void {
+    this.endFrame(); // sample pad buttons now, so one already held doesn't count as a press
     const toWorld = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
       return { x: ((e.clientX - r.left) / r.width) * WORLD_W, y: ((e.clientY - r.top) / r.height) * WORLD_H };

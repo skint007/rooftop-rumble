@@ -410,8 +410,13 @@ let pendingConfig: Partial<MatchConfig> = {};
 // swallow the click, so re-rendering waits until the pointer is released.
 let pointerDown = false;
 let renderPending = false;
-// Only buttons need this. A native <select> popup can swallow the pointerup entirely.
-document.addEventListener('pointerdown', (e) => (pointerDown = e.target instanceof Element && e.target.closest('button') !== null), true);
+// Only clickable controls need this. A native <select> popup can swallow the pointerup entirely.
+document.addEventListener(
+  'pointerdown',
+  (e) => (pointerDown = e.target instanceof Element && e.target.closest('button, label, input[type=checkbox]') !== null),
+  true,
+);
+
 function pointerReleased(): void {
   pointerDown = false;
   if (renderPending) setTimeout(renderLobby); // after the click has been dispatched
@@ -420,6 +425,29 @@ function pointerReleased(): void {
 document.addEventListener('pointerup', pointerReleased);
 document.addEventListener('pointercancel', pointerReleased);
 window.addEventListener('blur', pointerReleased);
+
+const CONTROLS = 'button, input, select';
+
+/**
+ * Remembers which control has keyboard focus as (seat row, tag, label), so a redraw can put
+ * focus back on the same control even when rows above it changed shape.
+ */
+function focusSpot(): (() => void) | null {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || !el.matches(CONTROLS)) return null;
+  const options = $('lobby-options');
+  if (options.contains(el)) {
+    // The options row has a fixed layout, so position is enough.
+    const index = [...options.querySelectorAll(CONTROLS)].indexOf(el);
+    return () => options.querySelectorAll<HTMLElement>(CONTROLS)[index]?.focus();
+  }
+  const seats = $('lobby-seats');
+  const row = el.closest('.seat');
+  if (!row || !seats.contains(row)) return null;
+  const rowIndex = [...seats.children].indexOf(row);
+  const same = (c: Element) => c.tagName === el.tagName && c.textContent === el.textContent;
+  return () => [...(seats.children[rowIndex]?.querySelectorAll<HTMLElement>(CONTROLS) ?? [])].find(same)?.focus();
+}
 
 function renderLobby(): void {
   if (!lobby) return;
@@ -431,6 +459,7 @@ function renderLobby(): void {
   $('lobby-code').textContent = L.code;
   // Re-rendering replaces the inputs, so carry over a name being typed and its cursor.
   const typing = document.activeElement instanceof HTMLInputElement && document.activeElement.dataset.seat ? document.activeElement : null;
+  const refocus = typing ? null : focusSpot();
   $('lobby-seats').replaceChildren(
     ...L.seats.map((s: LobbySeat, i) => {
       const mine = s.owner === L.you;
@@ -489,6 +518,7 @@ function renderLobby(): void {
     h('span', { className: 'small' }, `${L.clients.length} connected${host ? ' · you are host' : ''}`),
   );
   $<HTMLButtonElement>('lobby-start').hidden = !host;
+  refocus?.();
 }
 
 function button(label: string, onClick: () => void, ghost = false): HTMLButtonElement {
