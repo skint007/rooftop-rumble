@@ -21,7 +21,7 @@ const STICK_DEAD = 0.35;
 
 export class AimInput {
   dragMode: DragMode = 'slingshot';
-  private drag: { x: number; y: number; cx: number; cy: number } | null = null;
+  private drag: { id: number; x: number; y: number; cx: number; cy: number } | null = null;
   private released = false;
   private keys = new Set<string>();
   private pressed = new Set<string>();
@@ -36,19 +36,20 @@ export class AimInput {
       return { x: ((e.clientX - r.left) / r.width) * WORLD_W, y: ((e.clientY - r.top) / r.height) * WORLD_H };
     };
     const down = (e: PointerEvent) => {
+      if (this.drag && this.drag.id !== e.pointerId) return; // a second finger doesn't take over
       if (e.button !== 0) return void (this.drag = null);
       const p = toWorld(e);
-      this.drag = { x: p.x, y: p.y, cx: p.x, cy: p.y };
+      this.drag = { id: e.pointerId, x: p.x, y: p.y, cx: p.x, cy: p.y };
       canvas.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
-      if (!this.drag || this.released) return; // a released drag keeps its release point
+      if (!this.drag || this.drag.id !== e.pointerId || this.released) return; // a released drag keeps its release point
       const p = toWorld(e);
       this.drag.cx = p.x;
       this.drag.cy = p.y;
     };
     const up = (e: PointerEvent) => {
-      if (!this.drag) return;
+      if (!this.drag || this.drag.id !== e.pointerId) return;
       const p = toWorld(e);
       this.drag.cx = p.x;
       this.drag.cy = p.y;
@@ -70,7 +71,7 @@ export class AimInput {
     canvas.addEventListener('pointerdown', down);
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
-    canvas.addEventListener('pointercancel', () => (this.drag = null));
+    canvas.addEventListener('pointercancel', (e) => this.drag?.id === e.pointerId && (this.drag = null));
     canvas.addEventListener('contextmenu', menu);
     window.addEventListener('keydown', keydown);
     window.addEventListener('keyup', keyup);

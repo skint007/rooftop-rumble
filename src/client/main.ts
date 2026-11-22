@@ -387,11 +387,15 @@ function updateResultsButtons(): void {
 }
 
 // Seat name edits not yet sent: one debounced save per seat, bound to that seat's current input.
-const pendingNames = new Map<number, { timer: ReturnType<typeof setTimeout>; input: HTMLInputElement }>();
+const pendingNames = new Map<number, { timer: ReturnType<typeof setTimeout>; input: HTMLInputElement; at: number }>();
+const NAME_SAVE_MS = 400;
 
-function scheduleNameSave(seat: number, input: HTMLInputElement): void {
-  clearTimeout(pendingNames.get(seat)?.timer);
-  pendingNames.set(seat, { timer: setTimeout(() => saveName(seat), 400), input });
+/** Saves a seat name 400 ms after the last keystroke. `rebind` moves a pending save to a redrawn input without delaying it. */
+function scheduleNameSave(seat: number, input: HTMLInputElement, rebind = false): void {
+  const pending = pendingNames.get(seat);
+  clearTimeout(pending?.timer);
+  const at = rebind && pending ? pending.at : Date.now() + NAME_SAVE_MS;
+  pendingNames.set(seat, { timer: setTimeout(() => saveName(seat), Math.max(0, at - Date.now())), input, at });
 }
 
 function saveName(seat: number): void {
@@ -510,7 +514,7 @@ function renderLobby(): void {
     again.value = typing.value;
     // A save still waiting on the old input now reads the new one.
     const seat = Number(typing.dataset.seat);
-    if (pendingNames.has(seat)) scheduleNameSave(seat, again);
+    if (pendingNames.has(seat)) scheduleNameSave(seat, again, true);
     again.focus();
     again.setSelectionRange(typing.selectionStart, typing.selectionEnd);
   }
