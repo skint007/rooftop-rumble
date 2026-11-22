@@ -18,8 +18,7 @@ export interface Session {
 
 const AIM_SEND_MS = 60;
 const FALL_MS = 750;
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const frame = () => new Promise<number>((r) => requestAnimationFrame(r));
+const STOPPED = Symbol('stopped');
 const ease = (t: number) => t * t * (3 - 2 * t);
 
 export class Play {
@@ -28,6 +27,8 @@ export class Play {
   onMatchOver: (state: GameState) => void = () => {};
   /** Called when a gamepad's Start button is pressed. */
   onPause: () => void = () => {};
+  /** While true (e.g. a menu is open), local input is ignored. */
+  inputBlocked = false;
   private scene: Scene | null = null;
   private queue: MatchEvent[] = [];
   private pumping = false;
@@ -48,9 +49,26 @@ export class Play {
     requestAnimationFrame((t) => this.loop(t, t));
   }
 
+  /** Ends this screen. Any animation in progress stops at its next step. */
   stop(): void {
     this.running = false;
+    this.queue = [];
     this.input.detach();
+  }
+
+  // Animation steps. They reject once the screen is stopped, which unwinds playThrow.
+  private frame(): Promise<number> {
+    return this.step(new Promise((r) => requestAnimationFrame(r)));
+  }
+
+  private wait(ms: number): Promise<unknown> {
+    return this.step(new Promise((r) => setTimeout(r, ms)));
+  }
+
+  private async step<T>(p: Promise<T>): Promise<T> {
+    const v = await p;
+    if (!this.running) throw STOPPED;
+    return v;
   }
 
   receive(ev: MatchEvent): void {
@@ -65,7 +83,9 @@ export class Play {
       const ev = this.queue.shift()!;
       if (ev.t === 'state') this.showState(ev.state);
       else if (ev.t === 'aim') this.showRemoteAim(ev.id, ev.angle, ev.power);
-      else await this.playThrow(ev.result, ev.after);
+      else await this.playThrow(ev.result, ev.after).catch((e: unknown) => {
+        if (e !== STOPPED) throw e;
+      });
     }
     this.pumping = false;
   }
@@ -126,10 +146,10 @@ export class Play {
     for (let t = 0; t < 1; t = (performance.now() - start) / AIM_TWEEN_MS) {
       const k = ease(t);
       scene.aim = { id: res.shooter, angle: from.angle + (res.angle - from.angle) * k, power: from.power + (res.power - from.power) * k };
-      await frame();
+      await this.frame();
     }
     scene.aim = { id: res.shooter, angle: res.angle, power: res.power };
-    await wait(80);
+    await this.wait(80);
     scene.aim = null;
 
     // Flight.
@@ -147,7 +167,7 @@ export class Play {
         y: p[i * 2 + 1]! + (p[i * 2 + 3]! - p[i * 2 + 1]!) * k,
         color: shooter.color,
       };
-      await frame();
+      await this.frame();
     }
     scene.can = null;
     scene.trails[res.shooter] = res.path;
@@ -164,11 +184,11 @@ export class Play {
         this.text(v.x, v.y - 60, id === res.shooter ? 'OOPS!' : 'BONK!', v.color, 1500);
       }
       if (res.killed.length) setTimeout(() => sfx.hit(), 120);
-      await wait(600);
+      await this.wait(600);
     } else {
       sfx.offscreen();
       this.text(Math.min(Math.max(res.path.at(-2)!, 60), 1220), 120, 'MISS', '#ccc', 1000);
-      await wait(250);
+      await this.wait(250);
     }
 
     // Anyone standing on blown-away floor drops.
@@ -178,7 +198,7 @@ export class Play {
       const fallStart = performance.now();
       for (let t = 0; t < 1; t = (performance.now() - fallStart) / FALL_MS) {
         res.falls.forEach((f, k) => (scene.feetY[f.id] = fromY[k]! + (f.toY - fromY[k]!) * t * t));
-        await frame();
+        await this.frame();
       }
       for (const f of res.falls) {
         scene.feetY[f.id] = f.toY;
@@ -189,7 +209,7 @@ export class Play {
         this.text(v.x, Math.min(f.toY, WORLD_H - 20) - 30, 'SPLAT', v.color, 1400);
       }
       if (res.falls.some((f) => f.died)) sfx.splat();
-      await wait(150);
+      await this.wait(150);
     }
 
     scene.state = structuredClone(after);
@@ -269,10 +289,13 @@ export class Play {
 
   private handleInput(scene: Scene, dt: number, now: number): void {
     const s = scene.state;
-    if (this.animating || this.thrown || s.phase !== 'aiming') return;
     const id = s.current;
     const pad = this.session.localPlayer(id);
-    if (pad === null) return;
+    if (this.inputBlocked || this.animating || this.thrown || s.phase !== 'aiming' || pad === null) {
+      // Drop drags and presses made while it isn't your turn, so they can't fire later.
+      this.input.cancel();
+      return;
+    }
     const before = { ...this.myAim };
     const fire = this.input.update(dt, this.myAim, pad);
     scene.aim = { id, ...this.myAim };

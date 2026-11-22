@@ -71,6 +71,7 @@ type ScreenId = (typeof screens)[number];
 function show(id: ScreenId | null): void {
   for (const s of screens) $(s).hidden = s !== id;
   $('menu-btn').hidden = !(play && id === null);
+  if (play) play.inputBlocked = id === 'menu';
 }
 
 let play: Play | null = null;
@@ -95,7 +96,9 @@ function startPlay(session: Session, onEnd: () => void): Play {
   play = new Play($<HTMLCanvasElement>('game'), session);
   play.input.dragMode = prefs.dragMode;
   play.onPause = () => toggleMenu();
-  play.onMatchOver = () => setTimeout(() => play && show('results'), 1800);
+  const view = play;
+  // Only show results if this match is still the one on screen.
+  play.onMatchOver = () => setTimeout(() => play === view && show('results'), 1800);
   endMatch = onEnd;
   show(null);
   return play;
@@ -120,7 +123,7 @@ function quitToTitle(): void {
 function toggleMenu(): void {
   if (!play) return;
   if ($('menu').hidden) {
-    $('menu-note').textContent = online ? 'The match keeps running while this is open.' : '';
+    $('menu-note').textContent = 'The match keeps running while this is open.';
     $('menu-end').hidden = online !== null && lobby?.hostId !== lobby?.you;
     show('menu');
   } else {
