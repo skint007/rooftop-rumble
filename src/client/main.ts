@@ -351,7 +351,10 @@ function onServer(msg: ServerMsg): void {
 function onLobby(next: LobbyView): void {
   const first = lobby === null;
   lobby = next;
-  if (first) $('lobby-hint').textContent = 'Share the code or link. Claim more than one seat to play couch + online.';
+  if (first) {
+    $('lobby-hint').textContent = 'Share the code or link. Claim more than one seat to play couch + online.';
+    $('lobby-copy').textContent = 'Copy link';
+  }
   // Drop pending setting changes the server now reflects.
   for (const key of Object.keys(pendingConfig) as (keyof MatchConfig)[]) {
     if (next.config[key] === pendingConfig[key]) delete pendingConfig[key];

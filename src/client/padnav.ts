@@ -63,7 +63,9 @@ function describe(el: HTMLElement, screen: HTMLElement): string {
   const rowIndex = row?.parentElement ? [...row.parentElement.children].indexOf(row) : -1;
   const kindOf = (c: HTMLElement) => (c instanceof HTMLInputElement ? `input:${c.type}` : c.tagName);
   const same = controls(scope).filter((c) => kindOf(c) === kindOf(el));
-  return `${box?.id ?? ''}|${rowIndex}|${kindOf(el)}|${same.indexOf(el)}`;
+  // Buttons also carry their label: a redraw can turn the same slot from Join into Kick.
+  const label = el instanceof HTMLButtonElement ? `|${el.textContent}` : '';
+  return `${box?.id ?? ''}|${rowIndex}|${kindOf(el)}|${same.indexOf(el)}${label}`;
 }
 
 function stepSelect(select: HTMLSelectElement, by: number): void {
@@ -77,32 +79,38 @@ function stepSelect(select: HTMLSelectElement, by: number): void {
 export function startPadNav(): void {
   let prev: boolean[][] = []; // per pad, TAPPABLE buttons last frame
   // Where focus was on the current screen, so a redraw that drops it can put it back.
-  let spot: { screen: HTMLElement; key: string; index: number } | null = null;
+  let spot: { screen: HTMLElement; key: string } | null = null;
 
-  // The remembered control after a redraw, or the one in the same position if it's gone.
+  // The remembered control after a redraw. If it's gone (e.g. Join became Kick), focus is
+  // left alone rather than guessed, so the next A can't press something not chosen.
   const recall = (screen: HTMLElement, list: HTMLElement[]): HTMLElement | undefined =>
-    spot ? (list.find((c) => describe(c, screen) === spot!.key) ?? list[Math.min(spot.index, list.length - 1)]) : undefined;
-  const heldSince = new Map<Dir, number>();
-  const lastRepeat = new Map<Dir, number>();
+    spot ? list.find((c) => describe(c, screen) === spot!.key) : undefined;
+  // Per pad and direction, so one pad holding a direction doesn't hide another's press.
+  const heldSince = new Map<string, number>();
+  const lastRepeat = new Map<string, number>();
 
-  // Show the focus ring while the pad is in use; a mouse press hides it again.
-  document.addEventListener('pointerdown', () => document.body.classList.remove('pad-nav'), true);
+  // The focus ring and focus restoring are for pad use only; mouse or keyboard input hands back.
+  const handBack = () => document.body.classList.remove('pad-nav');
+  document.addEventListener('pointerdown', handBack, true);
+  document.addEventListener('keydown', handBack, true);
 
   const frame = (now: number) => {
     requestAnimationFrame(frame);
-    // Combine all pads: any of them can drive the menus.
-    const pads = gamepads().filter((p): p is Gamepad => p !== null);
-    const down = (b: number) => pads.some((p) => p.buttons[b]?.pressed ?? false);
-    const axis = (n: number) => pads.reduce((a, p) => (Math.abs(p.axes[n] ?? 0) > Math.abs(a) ? (p.axes[n] ?? 0) : a), 0);
-    // Presses are per pad, so one pad holding A doesn't hide another pad's press.
-    const pressedNow = gamepads().map((p) => (p ? TAPPABLE.map((b) => p.buttons[b]?.pressed ?? false) : []));
+    // Any pad can drive the menus. Presses are tracked per pad, so one pad holding a
+    // button doesn't hide another pad's press.
+    const pads = gamepads();
+    const pressedNow = pads.map((p) => (p ? TAPPABLE.map((b) => p.buttons[b]?.pressed ?? false) : []));
     const tap = (b: number) => pressedNow.some((btns, i) => btns[TAPPABLE.indexOf(b)] && !prev[i]?.[TAPPABLE.indexOf(b)]);
-    const dirHeld: Record<Dir, boolean> = {
-      up: down(DPAD.up) || axis(1) < -STICK,
-      down: down(DPAD.down) || axis(1) > STICK,
-      left: down(DPAD.left) || axis(0) < -STICK,
-      right: down(DPAD.right) || axis(0) > STICK,
-    };
+    const held = new Map<string, Dir>(); // "pad:dir" -> dir, for every direction held this frame
+    pads.forEach((p, i) => {
+      if (!p) return;
+      const b = (n: number) => p.buttons[n]?.pressed ?? false;
+      const [x = 0, y = 0] = p.axes;
+      if (b(DPAD.up) || y < -STICK) held.set(`${i}:up`, 'up');
+      if (b(DPAD.down) || y > STICK) held.set(`${i}:down`, 'down');
+      if (b(DPAD.left) || x < -STICK) held.set(`${i}:left`, 'left');
+      if (b(DPAD.right) || x > STICK) held.set(`${i}:right`, 'right');
+    });
     const aTap = tap(A);
     const bTap = tap(B);
     const step = (tap(RB) ? 1 : 0) - (tap(LB) ? 1 : 0);
@@ -121,18 +129,15 @@ export function startPadNav(): void {
 
     // Directions fire on the press, then repeat while held.
     const moves: Dir[] = [];
-    for (const dir of Object.keys(dirHeld) as Dir[]) {
-      if (!dirHeld[dir]) {
-        heldSince.delete(dir);
-        continue;
-      }
-      const since = heldSince.get(dir);
+    for (const key of heldSince.keys()) if (!held.has(key)) heldSince.delete(key);
+    for (const [key, dir] of held) {
+      const since = heldSince.get(key);
       if (since === undefined) {
-        heldSince.set(dir, now);
-        lastRepeat.set(dir, now);
+        heldSince.set(key, now);
+        lastRepeat.set(key, now);
         moves.push(dir);
-      } else if (now - since > REPEAT_DELAY_MS && now - lastRepeat.get(dir)! > REPEAT_EVERY_MS) {
-        lastRepeat.set(dir, now);
+      } else if (now - since > REPEAT_DELAY_MS && now - lastRepeat.get(key)! > REPEAT_EVERY_MS) {
+        lastRepeat.set(key, now);
         moves.push(dir);
       }
     }
@@ -174,7 +179,7 @@ export function startPadNav(): void {
   const remember = (screen: HTMLElement) => {
     const el = document.activeElement;
     const index = el instanceof HTMLElement ? controls(screen).indexOf(el) : -1;
-    if (el instanceof HTMLElement && index >= 0) spot = { screen, key: describe(el, screen), index }; // keep the last good spot if focus is gone
+    if (el instanceof HTMLElement && index >= 0) spot = { screen, key: describe(el, screen) }; // keep the last good spot if focus is gone
   };
   requestAnimationFrame(frame);
 }
