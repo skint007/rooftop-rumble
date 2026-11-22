@@ -6,6 +6,7 @@ import { NAME_MAX, type ClientMsg, type LobbySeat, type LobbyView, type ServerMs
 type Send = (msg: ServerMsg) => void;
 type Msg<T extends ClientMsg['t']> = Extract<ClientMsg, { t: T }>;
 
+const AIM_MIN_MS = 40; // clients send aim about every 60 ms
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
 const openSeat = (i: number): LobbySeat => ({ kind: 'open', owner: null, name: '', team: i, difficulty: 'normal' });
 const cleanName = (s: unknown) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) : '');
@@ -18,7 +19,8 @@ export class Room {
   private config: MatchConfig = { winsNeeded: 3, friendlyFire: false, teams: false };
   private match: MatchRunner | null = null;
   private playerSeat: number[] = []; // match player id -> lobby seat
-  private dropped = new Set<number>(); // seats a CPU took over when their human left mid-match
+  private dropped = new Set<number>();
+  private lastAim = new Map<string, number>(); // client id -> ms of their last relayed aim // seats a CPU took over when their human left mid-match
 
   constructor(code: string) {
     this.code = code;
@@ -45,6 +47,7 @@ export class Room {
 
   leave(id: string): void {
     this.clients.delete(id);
+    this.lastAim.delete(id);
     if (this.hostId === id) this.hostId = this.clients.keys().next().value ?? '';
     this.seats.forEach((s, i) => {
       if (s.owner !== id) return;
@@ -113,8 +116,12 @@ export class Room {
 
   private playerMove(from: string, msg: Msg<'aim'> | Msg<'throw'>): void {
     if (!this.match || this.seats[this.playerSeat[msg.id] ?? -1]?.owner !== from) return;
-    if (msg.t === 'aim') this.match.aim(msg.id, msg.angle, msg.power);
-    else this.match.throw(msg.id, msg.angle, msg.power);
+    if (msg.t === 'throw') return void this.match.throw(msg.id, msg.angle, msg.power);
+    // Aim is relayed to everyone, so cap how often one client can trigger it.
+    const now = Date.now();
+    if (now - (this.lastAim.get(from) ?? 0) < AIM_MIN_MS) return;
+    this.lastAim.set(from, now);
+    this.match.aim(msg.id, msg.angle, msg.power);
   }
 
   private startMatch(from: string): void {
