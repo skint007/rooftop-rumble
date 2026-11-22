@@ -301,3 +301,8 @@ label {
 body.pad-nav.menu-open .pad-hint {
   display: block;
 }
+/* Keep focused controls clear of the hint bar when a menu scrolls. */
+body.pad-nav.menu-open .overlay {
+  padding-bottom: 60px;
+  scroll-padding-bottom: 60px;
+}

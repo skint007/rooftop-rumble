@@ -1,7 +1,7 @@
 /**
  * Lets a gamepad drive the menus with one simple scheme. While a menu screen is showing:
  * up/down (d-pad, left stick, or LB/RB) step through the controls in page order, left/right
- * change the focused dropdown (or move along a row of buttons), A presses a button or
+ * change the focused dropdown (or move between buttons in the same row), A presses a button or
  * toggles a checkbox, and B presses the screen's back button (`data-back`). Text fields are
  * skipped, since a controller can't type. A hint bar shows the scheme while a pad is in use.
  * It has its own frame loop and ignores the pads while no menu screen is showing.
@@ -180,8 +180,10 @@ export function startPadNav(): void {
       } else if (active instanceof HTMLSelectElement) {
         remember(screen); // before the change, which may redraw and drop focus
         stepSelect(active, dir === 'left' ? -1 : 1);
-      } else if (!(active instanceof HTMLInputElement)) {
-        go(dir === 'right' ? 1 : -1); // along a row of buttons
+      } else if (active instanceof HTMLButtonElement) {
+        // Only along this row of buttons; never off its end onto a setting.
+        const row = list.filter((c) => c instanceof HTMLButtonElement && c.parentElement === active.parentElement);
+        row[row.indexOf(active) + (dir === 'right' ? 1 : -1)]?.focus();
       }
     }
     remember(screen);
