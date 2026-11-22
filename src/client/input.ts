@@ -52,7 +52,8 @@ export class AimInput {
     const keydown = (e: KeyboardEvent) => {
       // Keys aimed at a form control (e.g. Enter on a menu button) aren't game input.
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target instanceof HTMLSelectElement) return;
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
+      // Auto-repeat isn't a new press, e.g. Enter still held after it closed the menu.
+      if (!e.repeat && !this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       if (e.code === 'Escape') this.drag = null;

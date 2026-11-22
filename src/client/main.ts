@@ -219,15 +219,18 @@ function renderLocal(): void {
       );
     }),
   );
-  $('local-options').replaceChildren(...configControls(config, rerender, false));
+  $('local-options').replaceChildren(...configControls(config, (patch) => (Object.assign(config, patch), rerender()), false));
 }
 
-/** Win target, teams and friendly fire. Shared by local setup and the online lobby. */
-function configControls(config: MatchConfig, changed: () => void, disabled: boolean): HTMLElement[] {
+/**
+ * Win target, teams and friendly fire. Shared by local setup and the online lobby.
+ * `change` gets only the field that changed, so the caller can apply it to its latest config.
+ */
+function configControls(config: MatchConfig, change: (patch: Partial<MatchConfig>) => void, disabled: boolean): HTMLElement[] {
   return [
-    pick(WINS, config.winsNeeded as (typeof WINS)[number][0], (v) => ((config.winsNeeded = v), changed()), disabled),
-    check('Teams', config.teams, (v) => ((config.teams = v), changed()), disabled),
-    check('Friendly fire', config.friendlyFire, (v) => ((config.friendlyFire = v), changed()), disabled || !config.teams),
+    pick(WINS, config.winsNeeded as (typeof WINS)[number][0], (winsNeeded) => change({ winsNeeded }), disabled),
+    check('Teams', config.teams, (teams) => change({ teams }), disabled),
+    check('Friendly fire', config.friendlyFire, (friendlyFire) => change({ friendlyFire }), disabled || !config.teams),
   ];
 }
 
@@ -376,6 +379,8 @@ function updateResultsButtons(): void {
   $('results-note').textContent = host ? '' : 'Waiting for the host to head back to the lobby…';
 }
 
+const pendingNameSaves = new Map<number, () => void>(); // seat -> save not yet sent
+
 // A lobby update that lands mid-click would replace the button under the pointer and
 // swallow the click, so re-rendering waits until the pointer is released.
 let pointerDown = false;
@@ -415,11 +420,13 @@ function renderLobby(): void {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const save = () => {
           clearTimeout(timer);
+          pendingNameSaves.delete(i);
           send({ t: 'seat', seat: i, name: name.value });
         };
         name.oninput = () => {
           clearTimeout(timer);
           timer = setTimeout(save, 400);
+          pendingNameSaves.set(i, save);
         };
         name.onchange = save;
         fields.push(name);
@@ -450,9 +457,9 @@ function renderLobby(): void {
     again.focus();
     again.setSelectionRange(typing.selectionStart, typing.selectionEnd);
   }
-  const config = structuredClone(L.config);
   $('lobby-options').replaceChildren(
-    ...configControls(config, () => send({ t: 'config', config }), !host),
+    // Apply the change to the newest config we've heard about, not the one this render started from.
+    ...configControls(L.config, (patch) => lobby && send({ t: 'config', config: { ...lobby.config, ...patch } }), !host),
     h('span', { className: 'small' }, `${L.clients.length} connected${host ? ' · you are host' : ''}`),
   );
   $<HTMLButtonElement>('lobby-start').hidden = !host;
@@ -487,6 +494,8 @@ $('online-join').onclick = () => {
   connect({ t: 'join', code, name: playerName() });
 };
 $('lobby-start').onclick = () => {
+  // Send any name still waiting on its debounce first; the server handles messages in order.
+  for (const save of [...pendingNameSaves.values()]) save();
   sfx.click();
   $('lobby-error').textContent = '';
   send({ t: 'start' });
