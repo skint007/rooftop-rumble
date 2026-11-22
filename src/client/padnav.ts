@@ -47,6 +47,21 @@ function nearest(from: HTMLElement, list: HTMLElement[], dir: Dir): HTMLElement 
   return best;
 }
 
+/**
+ * Names a control by where it sits (section, seat row, type, and its place among controls
+ * of that type in the row), so the same control can be found again after a redraw even
+ * if controls were added or removed elsewhere on the screen.
+ */
+function describe(el: HTMLElement, screen: HTMLElement): string {
+  const box = el.parentElement?.closest<HTMLElement>('[id]');
+  const row = el.closest('.seat');
+  const scope = row instanceof HTMLElement ? row : box && screen.contains(box) ? box : screen;
+  const rowIndex = row?.parentElement ? [...row.parentElement.children].indexOf(row) : -1;
+  const kindOf = (c: HTMLElement) => (c instanceof HTMLInputElement ? `input:${c.type}` : c.tagName);
+  const same = controls(scope).filter((c) => kindOf(c) === kindOf(el));
+  return `${box?.id ?? ''}|${rowIndex}|${kindOf(el)}|${same.indexOf(el)}`;
+}
+
 function stepSelect(select: HTMLSelectElement, by: number): void {
   const i = Math.min(select.options.length - 1, Math.max(0, select.selectedIndex + by));
   if (i === select.selectedIndex) return;
@@ -58,7 +73,11 @@ function stepSelect(select: HTMLSelectElement, by: number): void {
 export function startPadNav(): void {
   let prev: boolean[] = [];
   // Where focus was on the current screen, so a redraw that drops it can put it back.
-  let spot: { screen: HTMLElement; index: number } | null = null;
+  let spot: { screen: HTMLElement; key: string; index: number } | null = null;
+
+  // The remembered control after a redraw, or the one in the same position if it's gone.
+  const recall = (screen: HTMLElement, list: HTMLElement[]): HTMLElement | undefined =>
+    spot ? (list.find((c) => describe(c, screen) === spot!.key) ?? list[Math.min(spot.index, list.length - 1)]) : undefined;
   const heldSince = new Map<Dir, number>();
   const lastRepeat = new Map<Dir, number>();
 
@@ -90,8 +109,7 @@ export function startPadNav(): void {
     // A redraw (lobby update, changed setting) dropped focus: put it back where it was.
     const focusGone = !(document.activeElement instanceof HTMLElement && screen.contains(document.activeElement));
     if (focusGone && spot?.screen === screen && document.body.classList.contains('pad-nav')) {
-      const list = controls(screen);
-      list[Math.min(spot.index, list.length - 1)]?.focus();
+      recall(screen, controls(screen))?.focus();
     }
 
     // Directions fire on the press, then repeat while held.
@@ -147,7 +165,7 @@ export function startPadNav(): void {
   const remember = (screen: HTMLElement) => {
     const el = document.activeElement;
     const index = el instanceof HTMLElement ? controls(screen).indexOf(el) : -1;
-    if (index >= 0) spot = { screen, index }; // keep the last good spot if focus is gone
+    if (el instanceof HTMLElement && index >= 0) spot = { screen, key: describe(el, screen), index }; // keep the last good spot if focus is gone
   };
   requestAnimationFrame(frame);
 }
