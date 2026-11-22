@@ -137,7 +137,10 @@ export function startPadNav(): void {
       return;
     }
     if (screen !== lastScreen) {
+      // A screen (re)appearing starts fresh: restoring is only for redraws within one showing,
+      // so reopening the menu never lands on End match by itself.
       for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
+      spot = null;
       lastScreen = screen;
     }
     // A redraw (lobby update, changed setting) dropped focus: put it back where it was.
