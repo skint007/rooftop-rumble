@@ -13,7 +13,8 @@ export interface Session {
   /** The gamepad binding if this browser controls player `id`, otherwise null. */
   localPlayer(id: number): PadBinding | null;
   aim(id: number, angle: number, power: number): void;
-  throw(id: number, angle: number, power: number): void;
+  /** `turn` is the state's turn token, so the runner can ignore a throw that arrives late. */
+  throw(id: number, angle: number, power: number, turn: number): void;
 }
 
 const AIM_SEND_MS = 60;
@@ -301,7 +302,7 @@ export class Play {
     scene.aim = { id, ...this.myAim };
     if (fire && this.myAim.power >= 1) {
       this.thrown = true;
-      this.session.throw(id, this.myAim.angle, this.myAim.power);
+      this.session.throw(id, this.myAim.angle, this.myAim.power, s.turn);
       return;
     }
     const changed = before.angle !== this.myAim.angle || before.power !== this.myAim.power;

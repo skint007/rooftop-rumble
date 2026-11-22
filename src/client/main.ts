@@ -251,7 +251,7 @@ function startLocal(): void {
       return p?.controller === 'human' ? localSetup.seats[p.seat]!.pad : null;
     },
     aim: (id, a, p) => runner?.aim(id, a, p),
-    throw: (id, a, p) => void runner?.throw(id, a, p),
+    throw: (id, a, p, turn) => void runner?.throw(id, a, p, turn),
   };
   const view = startPlay(session, () => {
     stopLocal?.();
@@ -359,7 +359,7 @@ function startOnlinePlay(): void {
       return lobby?.seats[seat]?.owner === lobby?.you ? (online?.pads.get(seat) ?? 'any') : null;
     },
     aim: (id, angle, power) => send({ t: 'aim', id, angle, power }),
-    throw: (id, angle, power) => send({ t: 'throw', id, angle, power }),
+    throw: (id, angle, power, turn) => send({ t: 'throw', id, angle, power, turn }),
   };
   startPlay(session, () => send({ t: 'lobby' }));
   rematch = () => send({ t: 'lobby' });
