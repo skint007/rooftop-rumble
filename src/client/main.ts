@@ -410,7 +410,8 @@ let pendingConfig: Partial<MatchConfig> = {};
 // swallow the click, so re-rendering waits until the pointer is released.
 let pointerDown = false;
 let renderPending = false;
-document.addEventListener('pointerdown', () => (pointerDown = true), true);
+// Only buttons need this. A native <select> popup can swallow the pointerup entirely.
+document.addEventListener('pointerdown', (e) => (pointerDown = e.target instanceof Element && e.target.closest('button') !== null), true);
 function pointerReleased(): void {
   pointerDown = false;
   if (renderPending) setTimeout(renderLobby); // after the click has been dispatched
