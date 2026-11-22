@@ -1,7 +1,8 @@
 /**
  * Lets a gamepad drive the menus. While a menu screen is showing, the d-pad or left
- * stick moves focus to the nearest control in that direction, A presses or toggles it,
- * left/right change a dropdown, and B presses the screen's back button (`data-back`).
+ * stick moves focus to the nearest control in that direction, LB/RB step through every
+ * control in order, A presses or toggles it, left/right change a dropdown, and B presses
+ * the screen's back button (`data-back`).
  * It has its own frame loop and ignores the pads while no menu screen is showing.
  */
 import { gamepads } from './input.ts';
@@ -13,6 +14,9 @@ const REPEAT_DELAY_MS = 350;
 const REPEAT_EVERY_MS = 140;
 const A = 0;
 const B = 1;
+const LB = 4;
+const RB = 5;
+const TAPPABLE = [A, B, LB, RB];
 const DPAD: Record<Dir, number> = { up: 12, down: 13, left: 14, right: 15 };
 
 /** Controls on the visible menu screen, in page order. */
@@ -71,7 +75,7 @@ function stepSelect(select: HTMLSelectElement, by: number): void {
 
 /** Starts the menu navigation loop. Call once. */
 export function startPadNav(): void {
-  let prev: boolean[] = [];
+  let prev: boolean[][] = []; // per pad, TAPPABLE buttons last frame
   // Where focus was on the current screen, so a redraw that drops it can put it back.
   let spot: { screen: HTMLElement; key: string; index: number } | null = null;
 
@@ -90,16 +94,19 @@ export function startPadNav(): void {
     const pads = gamepads().filter((p): p is Gamepad => p !== null);
     const down = (b: number) => pads.some((p) => p.buttons[b]?.pressed ?? false);
     const axis = (n: number) => pads.reduce((a, p) => (Math.abs(p.axes[n] ?? 0) > Math.abs(a) ? (p.axes[n] ?? 0) : a), 0);
-    const buttons = [down(A), down(B)];
+    // Presses are per pad, so one pad holding A doesn't hide another pad's press.
+    const pressedNow = gamepads().map((p) => (p ? TAPPABLE.map((b) => p.buttons[b]?.pressed ?? false) : []));
+    const tap = (b: number) => pressedNow.some((btns, i) => btns[TAPPABLE.indexOf(b)] && !prev[i]?.[TAPPABLE.indexOf(b)]);
     const dirHeld: Record<Dir, boolean> = {
       up: down(DPAD.up) || axis(1) < -STICK,
       down: down(DPAD.down) || axis(1) > STICK,
       left: down(DPAD.left) || axis(0) < -STICK,
       right: down(DPAD.right) || axis(0) > STICK,
     };
-    const aTap = buttons[0]! && !prev[0];
-    const bTap = buttons[1]! && !prev[1];
-    prev = buttons;
+    const aTap = tap(A);
+    const bTap = tap(B);
+    const step = (tap(RB) ? 1 : 0) - (tap(LB) ? 1 : 0);
+    prev = pressedNow;
 
     const screen = document.querySelector<HTMLElement>('.overlay:not([hidden])');
     if (!screen) {
@@ -129,7 +136,7 @@ export function startPadNav(): void {
         moves.push(dir);
       }
     }
-    if (!moves.length && !aTap && !bTap) return;
+    if (!moves.length && !aTap && !bTap && !step) return;
     document.body.classList.add('pad-nav');
 
     const list = controls(screen);
@@ -152,6 +159,8 @@ export function startPadNav(): void {
       else if (!(active instanceof HTMLInputElement && active.type !== 'checkbox')) active.click();
       return;
     }
+    // Bumpers walk every control in page order, so none is out of reach whatever the layout.
+    if (step) list[(list.indexOf(active) + step + list.length) % list.length]?.focus();
     for (const dir of moves) {
       if (active instanceof HTMLSelectElement && (dir === 'left' || dir === 'right')) {
         stepSelect(active, dir === 'left' ? -1 : 1);
