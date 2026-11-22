@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rooftop Rumble</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%225%22 y=%223%22 width=%226%22 height=%2210%22 fill=%22%23ff8c42%22/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="game" width="1280" height="720"></canvas>
+      <button id="menu-btn" class="ghost" hidden title="Menu (Esc)">☰</button>
+    </div>
+
+    <!-- Each overlay is one screen. main.ts shows one at a time. -->
+    <section id="title" class="overlay">
+      <div class="panel center">
+        <h1>ROOFTOP<br />RUMBLE</h1>
+        <p class="tag">Raccoons. Rooftops. Exploding soda.</p>
+        <div class="col">
+          <button data-go="local">Local play</button>
+          <button data-go="online">Online play</button>
+        </div>
+        <p class="small">1 to 4 players · teams or free-for-all · mouse, keyboard or gamepad</p>
+      </div>
+    </section>
+
+    <section id="local" class="overlay" hidden>
+      <div class="panel">
+        <h2>Local match</h2>
+        <div id="local-seats" class="seats"></div>
+        <div id="local-options" class="options"></div>
+        <div class="row end">
+          <button class="ghost" data-go="title">Back</button>
+          <button id="local-start">Start</button>
+        </div>
+        <p id="local-error" class="error"></p>
+      </div>
+    </section>
+
+    <section id="online" class="overlay" hidden>
+      <div class="panel narrow">
+        <h2>Online</h2>
+        <label>Your name <input id="online-name" maxlength="14" /></label>
+        <button id="online-create">Create a room</button>
+        <div class="or">or join one</div>
+        <div class="row">
+          <input id="online-code" maxlength="4" placeholder="CODE" class="code-input" />
+          <button id="online-join">Join</button>
+        </div>
+        <p id="online-error" class="error"></p>
+        <div class="row end"><button class="ghost" data-go="title">Back</button></div>
+      </div>
+    </section>
+
+    <section id="lobby" class="overlay" hidden>
+      <div class="panel">
+        <div class="row between">
+          <h2>Room <span id="lobby-code" class="code"></span></h2>
+          <button id="lobby-copy" class="ghost small-btn">Copy link</button>
+        </div>
+        <p class="small">Share the code or link. Claim more than one seat to play couch + online.</p>
+        <div id="lobby-seats" class="seats"></div>
+        <div id="lobby-options" class="options"></div>
+        <div class="row end">
+          <button id="lobby-leave" class="ghost">Leave</button>
+          <button id="lobby-start">Start</button>
+        </div>
+        <p id="lobby-error" class="error"></p>
+      </div>
+    </section>
+
+    <section id="menu" class="overlay dim" hidden>
+      <div class="panel narrow center">
+        <h2>Paused</h2>
+        <p class="small" id="menu-note"></p>
+        <div class="col">
+          <button id="menu-resume">Resume</button>
+          <button id="menu-mute" class="ghost">Sound: on</button>
+          <button id="menu-drag" class="ghost">Drag: slingshot</button>
+          <button id="menu-end" class="ghost">End match</button>
+          <button id="menu-quit" class="ghost">Quit to title</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="results" class="overlay clear" hidden>
+      <div class="panel narrow center results">
+        <div class="col">
+          <button id="results-again">Rematch</button>
+          <button id="results-quit" class="ghost">Quit to title</button>
+        </div>
+        <p class="small" id="results-note"></p>
+      </div>
+    </section>
+
+    <script type="module" src="src/client/main.ts"></script>
+  </body>
+</html>
