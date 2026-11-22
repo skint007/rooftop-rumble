@@ -21,6 +21,8 @@ export const HAND_OFFSET = 40; // the can leaves the paw this far above the feet
 
 const SPEED_PER_POWER = 9.5;
 const SIM_DT = 1 / 120;
+const SWEEP_PX = 2; // collision checks are at most this far apart
+const CPU_SWEEP_PX = 6; // coarser for the CPU's many trial throws
 const MAX_FLIGHT_SECONDS = 14;
 const BLAST_RADIUS = 34;
 const DIRECT_HIT_BLAST = 52;
@@ -84,7 +86,7 @@ export interface GameState {
   craters: Crater[];
   wind: number;
   turnTeams: number[]; // teams in the order they take turns
-  lastThrower: number[]; // per team, id of its last thrower this round, or -1
+  lastThrower: number[]; // per team, id of its most recent thrower, or -1
   current: number; // id of the player whose turn it is
   phase: Phase;
   roundWinner: number | null; // team, or -1 for a draw
@@ -202,8 +204,8 @@ export function startRound(state: GameState, seed: number): void {
   const teams = [...new Set(state.players.map((p) => p.team))].sort((a, b) => a - b);
   const lead = (state.round - 1) % teams.length;
   state.turnTeams = [...teams.slice(lead), ...teams.slice(0, lead)];
-  state.lastThrower = [-1, -1, -1, -1];
-  state.current = state.players.find((p) => p.team === state.turnTeams[0])!.id;
+  // lastThrower carries over between rounds, so each teammate gets to open in turn.
+  state.current = nextMember(state, state.turnTeams[0]!)!;
 }
 
 // Teammates stand next to each other, spread evenly across the city.
@@ -259,7 +261,7 @@ interface TraceHit {
 }
 
 // Flies a can until it hits something. When `record` is given, appends path points to it.
-function trace(state: GameState, shooter: number, shot: Shot, dt: number, record?: number[]): TraceHit {
+function trace(state: GameState, shooter: number, shot: Shot, dt: number, sweepPx: number, record?: number[]): TraceHit {
   const me = state.players[shooter]!;
   const rad = (shot.angle * Math.PI) / 180;
   const speed = shot.power * SPEED_PER_POWER;
@@ -279,21 +281,29 @@ function trace(state: GameState, shooter: number, shot: Shot, dt: number, record
   for (let i = 1; i <= steps; i++) {
     vx += state.wind * dt;
     vy += GRAVITY * dt;
+    const px = x;
+    const py = y;
     x += vx * dt;
     y += vy * dt;
     if (x < -80 || x > WORLD_W + 80) return finish({ x, y, player: null, out: true });
 
-    for (const p of state.players) {
-      if (!p.alive) continue;
-      const d = Math.hypot(x - p.x, y - (p.y - BODY_OFFSET));
-      // The can starts inside the thrower's reach, so ignore them until it gets clear.
-      if (p.id === shooter && !clearOfShooter) {
-        if (d > BODY_RADIUS + 12) clearOfShooter = true;
-        continue;
+    // Check points along the step, not just its end, so the can can't skip a corner.
+    const sub = Math.max(1, Math.ceil(Math.hypot(x - px, y - py) / sweepPx));
+    for (let k = 1; k <= sub; k++) {
+      const sx = px + ((x - px) * k) / sub;
+      const sy = py + ((y - py) * k) / sub;
+      for (const p of state.players) {
+        if (!p.alive) continue;
+        const d = Math.hypot(sx - p.x, sy - (p.y - BODY_OFFSET));
+        // The can starts inside the thrower's reach, so ignore them until it gets clear.
+        if (p.id === shooter && !clearOfShooter) {
+          if (d > BODY_RADIUS + 12) clearOfShooter = true;
+          continue;
+        }
+        if (d < BODY_RADIUS + 3) return finish({ x: sx, y: sy, player: p.id, out: false });
       }
-      if (d < BODY_RADIUS + 3) return finish({ x, y, player: p.id, out: false });
+      if (isSolid(state.buildings, state.craters, sx, sy)) return finish({ x: sx, y: sy, player: null, out: false });
     }
-    if (isSolid(state.buildings, state.craters, x, y)) return finish({ x, y, player: null, out: false });
     if (record && i % every === 0) record.push(round1(x), round1(y));
   }
   return finish({ x, y, player: null, out: true });
@@ -311,7 +321,7 @@ function landingY(buildings: Building[], craters: Crater[], x: number, y: number
 export function computeThrow(state: GameState, shooter: number, angle: number, power: number): ThrowResult {
   const shot = { angle: clamp(round1(angle), 0, 180), power: clamp(round1(power), 0, MAX_POWER) };
   const path: number[] = [];
-  const hit = trace(state, shooter, shot, SIM_DT, path);
+  const hit = trace(state, shooter, shot, SIM_DT, SWEEP_PX, path);
   const result: ThrowResult = { shooter, ...shot, path, impact: null, hitPlayer: hit.player, killed: [], falls: [] };
   if (hit.out) return result;
 
@@ -342,6 +352,7 @@ export function applyThrow(state: GameState, res: ThrowResult): void {
   me.lastAngle = res.angle;
   me.lastPower = res.power;
   me.shots += 1;
+  state.lastThrower[me.team] = me.id;
   if (res.impact) state.craters.push(res.impact);
   for (const id of res.killed) state.players[id]!.alive = false;
   for (const f of res.falls) {
@@ -369,17 +380,22 @@ export function applyThrow(state: GameState, res: ThrowResult): void {
  */
 export function advanceTurn(state: GameState): void {
   const curTeam = state.players[state.current]!.team;
-  state.lastThrower[curTeam] = state.current;
   const teams = state.turnTeams;
   const start = teams.indexOf(curTeam);
   for (let k = 1; k <= teams.length; k++) {
-    const team = teams[(start + k) % teams.length]!;
-    const members = state.players.filter((p) => p.team === team && p.alive);
-    if (members.length === 0) continue;
-    const last = state.lastThrower[team]!;
-    state.current = (members.find((p) => p.id > last) ?? members[0]!).id;
-    return;
+    const next = nextMember(state, teams[(start + k) % teams.length]!);
+    if (next !== null) {
+      state.current = next;
+      return;
+    }
   }
+}
+
+// The living teammate after the team's last thrower, or null if the whole team is down.
+function nextMember(state: GameState, team: number): number | null {
+  const members = state.players.filter((p) => p.team === team && p.alive);
+  const last = state.lastThrower[team]!;
+  return (members.find((p) => p.id > last) ?? members[0])?.id ?? null;
 }
 
 /** Names of the players on a team, for banners. */
@@ -413,22 +429,29 @@ export function cpuChooseShot(state: GameState, id: number, seed: number): Shot 
   const friends = state.players.filter((p) => p.alive && p.team === me.team);
   const dir = target.x >= me.x ? 1 : -1;
 
-  let best = { angle: dir > 0 ? 45 : 135, power: 60, score: Infinity };
-  for (let a = 15; a <= 85; a += 2.5) {
-    const angle = dir > 0 ? a : 180 - a;
-    for (let power = 20; power <= MAX_POWER; power += 1.25) {
-      const hit = trace(state, id, { angle, power }, 1 / 60);
-      if (hit.out) continue;
-      let score = Math.hypot(hit.x - target.x, hit.y - (target.y - BODY_OFFSET)) + power * 0.05;
-      for (const f of friends) if (Math.hypot(hit.x - f.x, hit.y - (f.y - BODY_OFFSET)) < 75) score += 1000;
-      if (score < best.score) best = { angle, power, score };
+  let best = { a: 45, power: 60, score: Infinity };
+  // Tries a grid of throws (angle measured from the horizontal toward the target) and keeps the best.
+  const search = (a0: number, a1: number, aStep: number, p0: number, p1: number, pStep: number) => {
+    for (let a = a0; a <= a1; a += aStep) {
+      for (let power = p0; power <= p1; power += pStep) {
+        const hit = trace(state, id, { angle: dir > 0 ? a : 180 - a, power }, 1 / 60, CPU_SWEEP_PX);
+        if (hit.out) continue;
+        let score = Math.hypot(hit.x - target.x, hit.y - (target.y - BODY_OFFSET)) + power * 0.05;
+        for (const f of friends) if (Math.hypot(hit.x - f.x, hit.y - (f.y - BODY_OFFSET)) < 75) score += 1000;
+        if (score < best.score) best = { a, power, score };
+      }
     }
-  }
+  };
+  // Coarse pass, then a finer one around the best. Bounded cost, since the server runs this inline.
+  search(15, 85, 5, 20, MAX_POWER, 2.5);
+  const { a, power } = best;
+  search(Math.max(10, a - 4), Math.min(88, a + 4), 1, Math.max(5, power - 3), Math.min(MAX_POWER, power + 3), 0.5);
+  const bestAngle = dir > 0 ? best.a : 180 - best.a;
 
   const noise = CPU_NOISE[me.difficulty];
   const learn = Math.max(noise.floor, 0.7 ** me.shots);
   return {
-    angle: round1(clamp(best.angle + gauss(rand) * noise.angle * learn, 0, 180)),
+    angle: round1(clamp(bestAngle + gauss(rand) * noise.angle * learn, 0, 180)),
     power: round1(clamp(best.power + gauss(rand) * noise.power * learn, 5, MAX_POWER)),
   };
 }

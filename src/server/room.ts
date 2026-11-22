@@ -6,7 +6,6 @@ import { NAME_MAX, type ClientMsg, type LobbySeat, type LobbyView, type ServerMs
 type Send = (msg: ServerMsg) => void;
 type Msg<T extends ClientMsg['t']> = Extract<ClientMsg, { t: T }>;
 
-const AIM_MIN_MS = 40; // clients send aim about every 60 ms
 const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
 const openSeat = (i: number): LobbySeat => ({ kind: 'open', owner: null, name: '', team: i, difficulty: 'normal' });
 const cleanName = (s: unknown) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) : '');
@@ -20,7 +19,9 @@ export class Room {
   private match: MatchRunner | null = null;
   private playerSeat: number[] = []; // match player id -> lobby seat
   private dropped = new Set<number>();
-  private lastAim = new Map<string, number>(); // client id -> ms of their last relayed aim // seats a CPU took over when their human left mid-match
+  // Every accepted message can fan out to the whole room, so each client gets a budget.
+  private aimLimit = new RateLimit(25, 5); // clients send aim about every 60 ms
+  private lobbyLimit = new RateLimit(5, 10); // seats a CPU took over when their human left mid-match
 
   constructor(code: string) {
     this.code = code;
@@ -47,7 +48,8 @@ export class Room {
 
   leave(id: string): void {
     this.clients.delete(id);
-    this.lastAim.delete(id);
+    this.aimLimit.forget(id);
+    this.lobbyLimit.forget(id);
     if (this.hostId === id) this.hostId = this.clients.keys().next().value ?? '';
     this.seats.forEach((s, i) => {
       if (s.owner !== id) return;
@@ -77,7 +79,7 @@ export class Room {
         if (isHost) this.endMatch();
         return;
     }
-    if (this.match) return;
+    if (this.match || !this.lobbyLimit.allow(from)) return;
     switch (msg.t) {
       case 'claim': {
         const s = this.seats[msg.seat];
@@ -117,20 +119,21 @@ export class Room {
   private playerMove(from: string, msg: Msg<'aim'> | Msg<'throw'>): void {
     if (!this.match || this.seats[this.playerSeat[msg.id] ?? -1]?.owner !== from) return;
     if (msg.t === 'throw') return void this.match.throw(msg.id, msg.angle, msg.power);
-    // Aim is relayed to everyone, so cap how often one client can trigger it.
-    const now = Date.now();
-    if (now - (this.lastAim.get(from) ?? 0) < AIM_MIN_MS) return;
-    this.lastAim.set(from, now);
+    if (!this.aimLimit.allow(from)) return;
     this.match.aim(msg.id, msg.angle, msg.power);
   }
 
   private startMatch(from: string): void {
     const filled = this.seats.map((s, i) => ({ s, i })).filter(({ s }) => s.kind !== 'open');
     const teams = new Set(filled.map(({ s, i }) => (this.config.teams ? s.team : i)));
-    if (filled.length < 2 || teams.size < 2) {
-      this.clients.get(from)?.send({ t: 'error', message: 'Need at least two sides to start.' });
-      return;
-    }
+    const error =
+      filled.length < 2 || teams.size < 2
+        ? 'Need at least two sides to start.'
+        : // CPU turns cost server time, so online matches need someone actually playing.
+          !filled.some(({ s }) => s.kind === 'human')
+          ? 'Online matches need at least one human player.'
+          : null;
+    if (error) return void this.clients.get(from)?.send({ t: 'error', message: error });
     this.playerSeat = filled.map(({ i }) => i);
     const specs: PlayerSpec[] = filled.map(({ s, i }) => ({
       seat: i,
@@ -170,6 +173,33 @@ export class Room {
       };
       c.send({ t: 'lobby', lobby });
     }
+  }
+}
+
+/** Token bucket per client: `perSec` refill, up to `burst` saved up. */
+class RateLimit {
+  private buckets = new Map<string, { tokens: number; at: number }>();
+  private perSec: number;
+  private burst: number;
+
+  constructor(perSec: number, burst: number) {
+    this.perSec = perSec;
+    this.burst = burst;
+  }
+
+  allow(key: string): boolean {
+    const now = Date.now();
+    const b = this.buckets.get(key) ?? { tokens: this.burst, at: now };
+    b.tokens = Math.min(this.burst, b.tokens + ((now - b.at) / 1000) * this.perSec);
+    b.at = now;
+    this.buckets.set(key, b);
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+
+  forget(key: string): void {
+    this.buckets.delete(key);
   }
 }
 

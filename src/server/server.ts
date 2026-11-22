@@ -66,6 +66,10 @@ function newCode(): string {
   }
 }
 
+// Caps that keep one abusive client from taking the whole server down.
+const MAX_CLIENTS = 256;
+const MAX_ROOMS = 32;
+const MAX_FAILED_JOINS = 5; // per connection, then it's closed
 const MAX_BUFFERED = 1 << 20; // drop clients that stop reading instead of queueing forever
 const HEARTBEAT_MS = 15_000;
 
@@ -93,8 +97,10 @@ setInterval(() => {
 }, HEARTBEAT_MS).unref();
 
 wss.on('connection', (ws) => {
+  if (wss.clients.size > MAX_CLIENTS) return void ws.close(1013, 'Server full');
   const clientId = `c${nextClient++}`;
   let room: Room | null = null;
+  let failedJoins = 0;
   alive.set(ws, true);
   ws.on('pong', () => alive.set(ws, true));
   // Oversized or invalid frames emit 'error' (then 'close'). Unhandled, it would crash the process.
@@ -105,8 +111,15 @@ wss.on('connection', (ws) => {
     if (!msg) return send(ws, { t: 'error', message: 'Bad message.' });
     if (msg.t === 'create' || msg.t === 'join') {
       if (room) return;
+      if (msg.t === 'create' && rooms.size >= MAX_ROOMS) {
+        return send(ws, { t: 'error', message: 'The server is full. Try again later.' });
+      }
       const target = msg.t === 'create' ? new Room(newCode()) : rooms.get(msg.code.toUpperCase());
-      if (!target) return send(ws, { t: 'error', message: 'No room with that code.' });
+      if (!target) {
+        send(ws, { t: 'error', message: 'No room with that code.' });
+        if (++failedJoins >= MAX_FAILED_JOINS) ws.close(1008, 'Too many failed joins');
+        return;
+      }
       const err = target.join(clientId, msg.name, (m) => send(ws, m));
       if (err) return send(ws, { t: 'error', message: err });
       rooms.set(target.code, target);

@@ -37,5 +37,5 @@ export type ClientMsg =
 
 export type ServerMsg = { t: 'error'; message: string } | { t: 'lobby'; lobby: LobbyView } | MatchEvent;
 
-export const ROOM_CODE_LENGTH = 4;
+export const ROOM_CODE_LENGTH = 5; // 24^5 ≈ 8M codes, so guessing one is slow
 export const NAME_MAX = 14;
