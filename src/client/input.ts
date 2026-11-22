@@ -50,7 +50,8 @@ export class AimInput {
       if (this.drag) this.released = true;
     };
     const keydown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      // Keys aimed at a form control (e.g. Enter on a menu button) aren't game input.
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target instanceof HTMLSelectElement) return;
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();

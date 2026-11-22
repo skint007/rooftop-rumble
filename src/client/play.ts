@@ -130,7 +130,7 @@ export class Play {
   }
 
   private showRemoteAim(id: number, angle: number, power: number): void {
-    if (!this.scene || this.session.localPlayer(id) !== null) return;
+    if (!this.scene?.state.players[id] || this.session.localPlayer(id) !== null) return;
     this.scene.aim = { id, angle, power };
   }
 
@@ -273,6 +273,8 @@ export class Play {
 
   private loop(now: number, last: number): void {
     if (!this.running) return;
+    // Schedule first, so one bad frame can't stop the loop for good.
+    requestAnimationFrame((t) => this.loop(t, now));
     const dt = Math.min(0.05, (now - last) / 1000);
     const scene = this.scene;
     if (scene) {
@@ -285,7 +287,6 @@ export class Play {
     }
     if (this.input.padTapped(9)) this.onPause();
     this.input.endFrame();
-    requestAnimationFrame((t) => this.loop(t, now));
   }
 
   private handleInput(scene: Scene, dt: number, now: number): void {

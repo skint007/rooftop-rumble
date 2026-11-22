@@ -72,6 +72,8 @@ function show(id: ScreenId | null): void {
   for (const s of screens) $(s).hidden = s !== id;
   $('menu-btn').hidden = !(play && id === null);
   if (play) play.inputBlocked = id === 'menu';
+  // A hidden button keeping focus would still catch Enter and Space.
+  if (id === null && document.activeElement instanceof HTMLElement) document.activeElement.blur();
 }
 
 let play: Play | null = null;
@@ -122,7 +124,8 @@ function quitToTitle(): void {
 // ---------- pause menu and results ----------
 
 function toggleMenu(): void {
-  if (!play) return;
+  // The results screen stays up once a match ends; the menu can't replace it.
+  if (!play || !$('results').hidden) return;
   if ($('menu').hidden) {
     $('menu-note').textContent = 'The match keeps running while this is open.';
     $('menu-end').hidden = online !== null && lobby?.hostId !== lobby?.you;
@@ -160,7 +163,7 @@ $('results-again').onclick = () => {
   rematch?.();
 };
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && play && !play.input.dragging && $('results').hidden) toggleMenu();
+  if (e.code === 'Escape' && play && !play.input.dragging) toggleMenu();
 });
 
 // ---------- local play ----------
@@ -373,8 +376,20 @@ function updateResultsButtons(): void {
   $('results-note').textContent = host ? '' : 'Waiting for the host to head back to the lobby…';
 }
 
+// A lobby update that lands mid-click would replace the button under the pointer and
+// swallow the click, so re-rendering waits until the pointer is released.
+let pointerDown = false;
+let renderPending = false;
+document.addEventListener('pointerdown', () => (pointerDown = true), true);
+document.addEventListener('pointerup', () => {
+  pointerDown = false;
+  if (renderPending) setTimeout(renderLobby); // after the click has been dispatched
+});
+
 function renderLobby(): void {
   if (!lobby) return;
+  renderPending = pointerDown;
+  if (pointerDown) return;
   const L = lobby;
   const host = L.hostId === L.you;
   const nameOf = (id: string | null) => L.clients.find((c) => c.id === id)?.name ?? '?';
@@ -392,7 +407,17 @@ function renderLobby(): void {
       } else if (mine) {
         const name = h('input', { value: s.name, maxLength: NAME_MAX });
         name.dataset.seat = String(i);
-        name.onchange = () => send({ t: 'seat', seat: i, name: name.value });
+        // Save while typing (debounced), so a lobby re-render can't lose the edit.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const save = () => {
+          clearTimeout(timer);
+          send({ t: 'seat', seat: i, name: name.value });
+        };
+        name.oninput = () => {
+          clearTimeout(timer);
+          timer = setTimeout(save, 400);
+        };
+        name.onchange = save;
         fields.push(name);
         fields.push(pick(PADS, online?.pads.get(i) ?? 'any', (v) => (online?.pads.set(i, v), renderLobby())));
         if (L.config.teams) fields.push(pick(TEAMS, s.team, (v) => send({ t: 'seat', seat: i, team: v })));
