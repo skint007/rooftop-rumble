@@ -90,8 +90,18 @@ export function startPadNav(): void {
   const heldSince = new Map<string, number>();
   const lastRepeat = new Map<string, number>();
 
+  // Directions held right now are ignored until released (used when the screen or the
+  // input device changes, so a held stick doesn't keep moving focus somewhere new).
+  const ignoreHeld = () => {
+    for (const key of heldSince.keys()) heldSince.set(key, HELD_BEFORE);
+  };
+  let lastScreen: HTMLElement | null = null;
+
   // The focus ring and focus restoring are for pad use only; mouse or keyboard input hands back.
-  const handBack = () => document.body.classList.remove('pad-nav');
+  const handBack = () => {
+    document.body.classList.remove('pad-nav');
+    ignoreHeld();
+  };
   document.addEventListener('pointerdown', handBack, true);
   document.addEventListener('keydown', handBack, true);
 
@@ -123,12 +133,20 @@ export function startPadNav(): void {
       // ignored until released, so opening the menu doesn't send focus running.
       heldSince.clear();
       for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
+      lastScreen = null;
       return;
+    }
+    if (screen !== lastScreen) {
+      for (const key of held.keys()) heldSince.set(key, HELD_BEFORE);
+      lastScreen = screen;
     }
     // A redraw (lobby update, changed setting) dropped focus: put it back where it was.
     const focusGone = !(document.activeElement instanceof HTMLElement && screen.contains(document.activeElement));
     if (focusGone && spot?.screen === screen && document.body.classList.contains('pad-nav')) {
-      recall(screen, controls(screen))?.focus();
+      const again = recall(screen, controls(screen));
+      // Gone means gone: a later redraw (e.g. someone new in that seat) mustn't bring it back.
+      if (again) again.focus();
+      else spot = null;
     }
 
     // Directions fire on the press, then repeat while held.
