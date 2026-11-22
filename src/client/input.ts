@@ -99,7 +99,7 @@ export class AimInput {
 
   /** True once per press of this button on any connected gamepad. */
   padTapped(button: number): boolean {
-    return navigator.getGamepads().some((pad, i) => pad && this.padEdge(i, pad, button));
+    return gamepads().some((pad, i) => pad && this.padEdge(i, pad, button));
   }
 
   /**
@@ -134,7 +134,7 @@ export class AimInput {
     if (this.keys.has('ArrowDown')) aim.power -= powerRate;
     if (this.tapped('Space') || this.tapped('Enter')) fire = true;
 
-    navigator.getGamepads().forEach((p, i) => {
+    gamepads().forEach((p, i) => {
       if (!p || (pad !== 'any' && pad !== i)) return;
       const [lx = 0, ly = 0, , ry = 0] = p.axes;
       if (Math.hypot(lx, ly) > STICK_DEAD) {
@@ -159,7 +159,7 @@ export class AimInput {
   /** Call once at the end of every frame. */
   endFrame(): void {
     this.pressed.clear();
-    navigator.getGamepads().forEach((p, i) => {
+    gamepads().forEach((p, i) => {
       if (p) this.padPrev[i] = p.buttons.map((b) => b.pressed);
     });
   }
@@ -177,6 +177,15 @@ export class AimInput {
 
   private padEdge(i: number, pad: Gamepad, button: number): boolean {
     return (pad.buttons[button]?.pressed ?? false) && !(this.padPrev[i]?.[button] ?? false);
+  }
+}
+
+/** Connected gamepads. Empty if the page isn't allowed gamepad access (Permissions-Policy), which makes getGamepads throw. */
+function gamepads(): (Gamepad | null)[] {
+  try {
+    return navigator.getGamepads();
+  } catch {
+    return [];
   }
 }
 

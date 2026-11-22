@@ -82,11 +82,15 @@ export class Play {
     this.pumping = true;
     while (this.queue.length && this.running) {
       const ev = this.queue.shift()!;
-      if (ev.t === 'state') this.showState(ev.state);
-      else if (ev.t === 'aim') this.showRemoteAim(ev.id, ev.angle, ev.power);
-      else await this.playThrow(ev.result, ev.after).catch((e: unknown) => {
-        if (e !== STOPPED) throw e;
-      });
+      // One bad event is skipped, not allowed to stall every event after it.
+      try {
+        if (ev.t === 'state') this.showState(ev.state);
+        else if (ev.t === 'aim') this.showRemoteAim(ev.id, ev.angle, ev.power);
+        else await this.playThrow(ev.result, ev.after);
+      } catch (e) {
+        if (e !== STOPPED) console.error('Skipped a match event that failed to play', e);
+        this.animating = false;
+      }
     }
     this.pumping = false;
   }
